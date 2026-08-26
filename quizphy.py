@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "multi_quiz_portal_v7.db"
+DB_FILE = "multi_quiz_portal_v8.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -106,7 +106,7 @@ def init_db():
         )
     ''')
     
-    # Insert Initial Sample Data safely with INSERT OR IGNORE
+    # Insert Demo Data Safely
     now_time = get_ist_now() - timedelta(hours=1)
     default_start = now_time.strftime("%Y-%m-%d %H:%M")
     default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
@@ -305,7 +305,7 @@ if selected_portal == "⚙️ Admin Control Center":
     
     admin_tab = st.selectbox("Select Management Section:", [
         "📊 Student Results & Delete Controls", 
-        "📚 Create & Manage Quizzes (Class 11, 12 etc.)", 
+        "📚 Create & Manage Quizzes (Edit Date/Time & Details)", 
         "👥 Allowed Students (Excel/Manual)", 
         "📝 Question Bank (Excel/Manual)",
         "💾 Full Database Backup & Restore (Excel)"
@@ -429,11 +429,12 @@ if selected_portal == "⚙️ Admin Control Center":
                         <button onclick="window.print()" style="background-color: #007bff; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; font-weight: bold;">🖨️ Print Report</button>
                     """, height=600, scrolling=True)
 
-    # --- SECTION 2: CREATE & MANAGE QUIZZES ---
-    elif admin_tab == "📚 Create & Manage Quizzes (Class 11, 12 etc.)":
-        st.subheader("Manage Quizzes, Timings & Deletions")
+    # --- SECTION 2: CREATE & EDIT QUIZZES (DATE/TIME MODIFICATION) ---
+    elif admin_tab == "📚 Create & Manage Quizzes (Edit Date/Time & Details)":
+        st.subheader("Manage Quizzes, Edit Timings & Deletions")
         
-        with st.expander("➕ Create New Quiz (Class 11 / Class 12)", expanded=True):
+        # 1. Create New Quiz
+        with st.expander("➕ Create New Quiz (Class 11 / Class 12)", expanded=False):
             with st.form("new_quiz_form"):
                 q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Unit 1):")
                 q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
@@ -468,8 +469,58 @@ if selected_portal == "⚙️ Admin Control Center":
                     else:
                         st.error("Quiz title aur Password bharna compulsory hai.")
 
+        # 2. Edit Existing Quiz Details (Date, Time, Duration, Password)
+        with st.expander("✏️ Edit Date, Time & Details of Existing Quiz", expanded=True):
+            if quizzes_df.empty:
+                st.info("Pehle koi Quiz create karein.")
+            else:
+                quiz_map = {r['quiz_title']: r['id'] for _, r in quizzes_df.iterrows()}
+                edit_q_title = st.selectbox("Select Quiz to Edit:", list(quiz_map.keys()), key="edit_selector")
+                edit_q_id = quiz_map[edit_q_title]
+                
+                # Fetch current quiz data
+                conn = get_db()
+                q_to_edit = conn.execute("SELECT * FROM quizzes WHERE id = ?", (edit_q_id,)).fetchone()
+                conn.close()
+                
+                # Parse existing date & time
+                try:
+                    cur_s_dt = datetime.strptime(q_to_edit['start_datetime'], "%Y-%m-%d %H:%M")
+                    cur_e_dt = datetime.strptime(q_to_edit['end_datetime'], "%Y-%m-%d %H:%M")
+                except Exception:
+                    cur_s_dt = get_ist_now()
+                    cur_e_dt = get_ist_now() + timedelta(days=7)
+
+                with st.form(f"edit_quiz_form_{edit_q_id}"):
+                    new_edit_title = st.text_input("Quiz Title:", value=q_to_edit['quiz_title'])
+                    new_edit_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=int(q_to_edit['duration_minutes']))
+                    new_edit_pwd = st.text_input("Exam Password:", value=q_to_edit['exam_password'], type="password")
+                    
+                    ec1, ec2 = st.columns(2)
+                    new_s_date = ec1.date_input("Start Date (IST):", value=cur_s_dt.date())
+                    new_s_time = ec1.time_input("Start Time (IST):", value=cur_s_dt.time())
+                    new_e_date = ec2.date_input("End Date (IST):", value=cur_e_dt.date())
+                    new_e_time = ec2.time_input("End Time (IST):", value=cur_e_dt.time())
+                    
+                    btn_update_quiz = st.form_submit_button("💾 Save Updated Date, Time & Details", type="primary")
+                    if btn_update_quiz:
+                        up_start_str = f"{new_s_date} {new_s_time.strftime('%H:%M')}"
+                        up_end_str = f"{new_e_date} {new_e_time.strftime('%H:%M')}"
+                        
+                        conn = get_db()
+                        conn.execute('''
+                            UPDATE quizzes 
+                            SET quiz_title = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?, exam_password = ?
+                            WHERE id = ?
+                        ''', (new_edit_title, new_edit_dur, up_start_str, up_end_str, new_edit_pwd, edit_q_id))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"'{new_edit_title}' ka Date, Time aur Settings successfully update ho gaye!")
+                        time.sleep(1)
+                        st.rerun()
+
         st.markdown("---")
-        st.write("### Existing Quizzes List")
+        st.write("### Existing Quizzes List & Controls")
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
@@ -687,7 +738,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.error(f"Restore failed: {e}")
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL (IST Time Window Checked)
+# 5. STUDENT EXAM PORTAL
 # ==========================================
 else:
     if "student_name" not in st.session_state:
