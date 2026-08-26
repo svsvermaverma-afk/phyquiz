@@ -3,7 +3,7 @@ import sqlite3
 import pandas as pd
 import time
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import streamlit.components.v1 as components
 
 # ==========================================
@@ -16,12 +16,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "multi_quiz_portal_v5.db"
+DB_FILE = "multi_quiz_portal_v6.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
+# Indian Standard Time (IST: UTC + 5:30) Helper
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def get_ist_now():
+    return datetime.now(timezone.utc).astimezone(IST)
+
 # ==========================================
-# 2. BULLETPROOF DATABASE SETUP
+# 2. DATABASE MANAGEMENT
 # ==========================================
 def get_db():
     conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
@@ -105,10 +111,10 @@ def init_db():
         )
     ''')
     
-    # Insert Demo Quizzes only if database is completely fresh
+    # Insert Demo Quizzes if empty
     c.execute("SELECT COUNT(*) FROM quizzes")
     if c.fetchone()[0] == 0:
-        now_time = datetime.now()
+        now_time = get_ist_now() - timedelta(hours=1) # 1 hour pehle se active
         default_start = now_time.strftime("%Y-%m-%d %H:%M")
         default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
         
@@ -129,7 +135,7 @@ def init_db():
         c.executemany('''
             INSERT INTO authorized_students (quiz_id, student_name)
             VALUES (?, ?)
-        ''', [(q_id_1, "Aman Verma"), (q_id_1, "Rohan Sharma")])
+        ''', [(q_id_1, "Aman Verma"), (q_id_1, "Rohan Sharma"), (q_id_1, "Shashank Verma")])
 
         c.execute('''
             INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, exam_password, is_active)
@@ -223,7 +229,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     updateTimer();
     setInterval(updateTimer, 1000);
 
-    // Tab Switch Detection & Warning
+    // Tab Switch Detection
     window.addEventListener('blur', function() {{
         tabSwitches++;
         sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
@@ -292,6 +298,7 @@ if selected_portal == "⚙️ Admin Control Center":
         st.rerun()
 
     st.title("⚙️ Teacher & Exam Control Center")
+    st.info(f"🕒 Current Indian Standard Time (IST): **{get_ist_now().strftime('%Y-%m-%d %I:%M %p')}**")
 
     quizzes_df = get_all_quizzes()
     
@@ -432,10 +439,12 @@ if selected_portal == "⚙️ Admin Control Center":
                 q_pwd = st.text_input("Student Exam Password (Jo aap bachcho ko denge):", type="password")
                 
                 c_d1, c_d2 = st.columns(2)
-                start_date = c_d1.date_input("Start Date:")
-                start_time = c_d1.time_input("Start Time:")
-                end_date = c_d2.date_input("End Date:", value=datetime.now().date() + timedelta(days=7))
-                end_time = c_d2.time_input("End Time:")
+                # Default start time 10 mins ago to allow immediate access
+                cur_ist = get_ist_now()
+                start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
+                start_time = c_d1.time_input("Start Time (IST):", value=(cur_ist - timedelta(minutes=10)).time())
+                end_date = c_d2.date_input("End Date (IST):", value=(cur_ist + timedelta(days=7)).date())
+                end_time = c_d2.time_input("End Time (IST):", value=cur_ist.time())
                 
                 submitted_quiz = st.form_submit_button("Create Quiz")
                 if submitted_quiz:
@@ -465,10 +474,10 @@ if selected_portal == "⚙️ Admin Control Center":
             for _, r in quizzes_df.iterrows():
                 with st.container():
                     st.markdown(f"**{r['quiz_title']}** | Duration: `{r['duration_minutes']} mins` | Status: `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
-                    st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
+                    st.markdown(f"🕒 **Valid From (IST):** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
-                    col_q1, col_q2 = st.columns([1, 1])
-                    if col_q1.button(f"Toggle Active Status ({r['quiz_title']})", key=f"tog_{r['id']}"):
+                    col_q1, col_q2, col_q3 = st.columns([1, 1.5, 1])
+                    if col_q1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
                         conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
@@ -476,12 +485,23 @@ if selected_portal == "⚙️ Admin Control Center":
                         conn.close()
                         st.rerun()
                     
-                    if col_q2.button(f"🗑️ Delete Entire Quiz ({r['quiz_title']})", key=f"del_quiz_{r['id']}", type="secondary"):
+                    if col_q2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
+                        now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+                        now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
+                        conn = get_db()
+                        conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
+                        conn.commit()
+                        conn.close()
+                        st.success("Quiz abhi se LIVE kar diya gaya hai!")
+                        time.sleep(1)
+                        st.rerun()
+                    
+                    if col_q3.button(f"🗑️ Delete Quiz", key=f"del_quiz_{r['id']}", type="secondary"):
                         conn = get_db()
                         conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
                         conn.commit()
                         conn.close()
-                        st.warning(f"Quiz '{r['quiz_title']}' successfully delete kar diya gaya.")
+                        st.warning(f"Quiz '{r['quiz_title']}' delete kar diya gaya.")
                         time.sleep(1)
                         st.rerun()
                     st.divider()
@@ -528,15 +548,6 @@ if selected_portal == "⚙️ Admin Control Center":
             auth_list = get_authorized_students(sel_q_id)
             st.write(f"Total: {len(auth_list)}")
             
-            if auth_list and st.button(f"🗑️ Remove ALL Students from {sel_q_title}"):
-                conn = get_db()
-                conn.execute("DELETE FROM authorized_students WHERE quiz_id = ?", (sel_q_id,))
-                conn.commit()
-                conn.close()
-                st.warning("Sabhi students list se hata diye gaye.")
-                time.sleep(1)
-                st.rerun()
-                
             for name in auth_list:
                 c1, c2 = st.columns([4, 1])
                 c1.markdown(f"👤 {name}")
@@ -601,9 +612,7 @@ if selected_portal == "⚙️ Admin Control Center":
     # --- SECTION 5: FULL DATABASE BACKUP & RESTORE ---
     elif admin_tab == "💾 Full Database Backup & Restore (Excel)":
         st.subheader("💾 Export & Import Complete Portal Data (Excel Backup)")
-        st.markdown("Is feature se aap apne poore portal ka data ek single **Excel (.xlsx)** file me safe save karke rakh sakte hain.")
         
-        # 1. Export Excel Data
         conn = get_db()
         q_export = pd.read_sql_query("SELECT * FROM quizzes", conn)
         ques_export = pd.read_sql_query("SELECT * FROM questions", conn)
@@ -624,7 +633,7 @@ if selected_portal == "⚙️ Admin Control Center":
         st.download_button(
             label="📥 Download Full Database Backup (.xlsx)",
             data=excel_data,
-            file_name=f"Quiz_Portal_Complete_Backup_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            file_name=f"Quiz_Portal_Complete_Backup_{get_ist_now().strftime('%Y%m%d_%H%M')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         
@@ -678,7 +687,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.error(f"Restore failed: {e}")
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL
+# 5. STUDENT EXAM PORTAL (IST Time Window Checked)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -708,7 +717,7 @@ else:
         with col1:
             with st.form("student_login_form"):
                 sel_quiz_title = st.selectbox("Select Quiz / Class:", list(quiz_opts.keys()))
-                in_name = st.text_input("Student Name:")
+                in_name = st.text_input("Student Name (Jo list me registered hai):")
                 in_pwd = st.text_input("Exam Password (Given by Teacher):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
@@ -724,9 +733,15 @@ else:
                     
                     auth_names = [n.lower() for n in get_authorized_students(q_id)]
                     
-                    now = datetime.now()
-                    start_dt = datetime.strptime(q_data['start_datetime'], "%Y-%m-%d %H:%M")
-                    end_dt = datetime.strptime(q_data['end_datetime'], "%Y-%m-%d %H:%M")
+                    # Current Indian Standard Time comparison
+                    now_ist = get_ist_now().replace(tzinfo=None)
+                    
+                    try:
+                        start_dt = datetime.strptime(q_data['start_datetime'], "%Y-%m-%d %H:%M")
+                        end_dt = datetime.strptime(q_data['end_datetime'], "%Y-%m-%d %H:%M")
+                    except Exception:
+                        start_dt = now_ist - timedelta(days=1)
+                        end_dt = now_ist + timedelta(days=10)
                     
                     if not clean_name:
                         st.error("Kripya apna naam darj karein.")
@@ -734,10 +749,10 @@ else:
                         st.error("Galat Exam Password!")
                     elif clean_name.lower() not in auth_names:
                         st.error(f"❌ '{clean_name}' is quiz ke liye authorized list me nahi hai.")
-                    elif now < start_dt:
-                        st.error(f"⏳ Exam abhi shuru nahi hua hai! Start Time: {q_data['start_datetime']}")
-                    elif now > end_dt:
-                        st.error(f"⏰ Exam ka samay samapt ho chuka hai! End Time: {q_data['end_datetime']}")
+                    elif now_ist < start_dt:
+                        st.error(f"⏳ Exam abhi shuru nahi hua hai! Start Time (IST): {q_data['start_datetime']} (Current IST: {now_ist.strftime('%Y-%m-%d %H:%M')})")
+                    elif now_ist > end_dt:
+                        st.error(f"⏰ Exam ka samay samapt ho chuka hai! End Time (IST): {q_data['end_datetime']}")
                     else:
                         st.session_state.student_name = clean_name
                         st.session_state.selected_quiz_id = q_id
@@ -816,7 +831,7 @@ else:
         submitted = st.form_submit_button("Submit Final Answers", type="primary")
         
         if submitted:
-            sub_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sub_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
             score = 0
             
             conn = get_db()
