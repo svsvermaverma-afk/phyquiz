@@ -6,26 +6,29 @@ from datetime import datetime
 import streamlit.components.v1 as components
 
 # ==========================================
-# 1. PAGE SETUP & CONFIGURATION
+# 1. PAGE SETUP
 # ==========================================
 st.set_page_config(
     page_title="Proctored Quiz & Exam Portal",
-    page_icon="📝",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 DB_FILE = "quiz_master.db"
-
-# Admin Login Credentials
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
 # ==========================================
-# 2. DATABASE MANAGEMENT (SQLite)
+# 2. DATABASE MANAGEMENT & AUTO-MIGRATION
 # ==========================================
-def init_db():
+def get_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db()
     c = conn.cursor()
     
     # 1. Settings Table
@@ -36,7 +39,7 @@ def init_db():
         )
     ''')
     
-    # 2. Questions Table
+    # 2. Questions Bank Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +56,7 @@ def init_db():
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_name TEXT NOT NULL,
+            student_name TEXT DEFAULT 'Student',
             email TEXT UNIQUE NOT NULL,
             score INTEGER NOT NULL,
             total_questions INTEGER NOT NULL,
@@ -61,11 +64,17 @@ def init_db():
         )
     ''')
     
-    # 4. Detailed Question-wise Student Responses Table
+    # Safe Auto-Migration for submissions table
+    try:
+        c.execute("ALTER TABLE submissions ADD COLUMN student_name TEXT DEFAULT 'Student'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # 4. Detailed Question-Wise Responses Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_name TEXT NOT NULL,
+            student_name TEXT DEFAULT 'Student',
             email TEXT NOT NULL,
             question_id INTEGER NOT NULL,
             question_text TEXT NOT NULL,
@@ -76,19 +85,25 @@ def init_db():
         )
     ''')
     
+    # Safe Auto-Migration for student_responses table
+    try:
+        c.execute("ALTER TABLE student_responses ADD COLUMN student_name TEXT DEFAULT 'Student'")
+    except sqlite3.OperationalError:
+        pass
+
     # Default Settings
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('duration_minutes', '15')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('quiz_title', 'Physics & Science Assessment')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('is_active', '1')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('student_exam_password', 'EXAM123')")
     
-    # Default sample questions
+    # Default Questions if Table is Empty
     c.execute("SELECT COUNT(*) FROM questions")
     if c.fetchone()[0] == 0:
         sample_q = [
             ("What is the SI unit of Electric Current?", "Volt", "Ampere", "Ohm", "Watt", "Ampere"),
-            ("Which sensor is commonly used for gas/smoke detection?", "DHT11", "MQ2", "HC-SR04", "LDR", "MQ2"),
-            ("What is the acceleration due to gravity on Earth?", "9.8 m/s²", "8.9 m/s²", "10.8 m/s²", "7.8 m/s²", "9.8 m/s²")
+            ("Which sensor is commonly used for gas and smoke detection?", "DHT11", "MQ2", "HC-SR04", "LDR", "MQ2"),
+            ("What is the acceleration due to gravity on Earth surface?", "9.8 m/s²", "8.9 m/s²", "10.8 m/s²", "7.8 m/s²", "9.8 m/s²")
         ]
         c.executemany('''
             INSERT INTO questions (question, option_a, option_b, option_c, option_d, correct_option)
@@ -101,11 +116,6 @@ def init_db():
 init_db()
 
 # DB Helpers
-def get_db():
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
 def get_setting(key, default=""):
     conn = get_db()
     c = conn.cursor()
@@ -127,12 +137,12 @@ def get_questions():
     conn.close()
     return df
 
-# Anti-Cheating JavaScript
+# Anti-Cheating Scripts
 def inject_security_scripts():
     js = """
     <script>
     window.addEventListener('blur', function() {
-        alert('⚠️ Warning: Window/Tab switch detect hua hai! Yeh activity log ho chuki hai.');
+        alert('⚠️ Warning: Window ya Tab switch detect hua hai! Yeh activity log ho chuki hai.');
     });
     document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
     document.addEventListener('copy', function(e) { e.preventDefault(); });
@@ -143,34 +153,29 @@ def inject_security_scripts():
     components.html(js, height=0, width=0)
 
 # ==========================================
-# 3. GLOBAL PORTAL NAVIGATION
+# 3. SIDEBAR NAVIGATION
 # ==========================================
 st.sidebar.title("🧭 Navigation")
-selected_portal = st.sidebar.radio(
-    "Select Access Portal:",
-    ["🎓 Student Exam Portal", "⚙️ Admin Control Center"]
-)
+selected_portal = st.sidebar.radio("Select Access Portal:", ["🎓 Student Exam Portal", "⚙️ Admin Control Center"])
 st.sidebar.divider()
 
 # ==========================================
-# ==========================================
-# 4. ADMIN CONTROL CENTER
-# ==========================================
+# 4. ADMIN CONTROL PANEL
 # ==========================================
 if selected_portal == "⚙️ Admin Control Center":
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
 
-    # Admin Login Gate
+    # Admin Login Gateway
     if not st.session_state.admin_authenticated:
-        st.title("🔐 Admin Control Login")
-        st.markdown("Yeh section sirf teacher/incharge ke access ke liye hai.")
+        st.title("🔐 Admin Login Portal")
+        st.markdown("Yahan se sirf authorized teacher/admin access kar sakte hain.")
         
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("admin_login_form"):
-                in_user = st.text_input("Admin Username:")
-                in_pass = st.text_input("Admin Password:", type="password")
+                in_user = st.text_input("Admin Username:", placeholder="admin")
+                in_pass = st.text_input("Admin Password:", type="password", placeholder="Admin@2026")
                 btn_login = st.form_submit_button("Sign In as Admin", type="primary")
                 
                 if btn_login:
@@ -180,10 +185,10 @@ if selected_portal == "⚙️ Admin Control Center":
                         time.sleep(0.5)
                         st.rerun()
                     else:
-                        st.error("Galat Username ya Password! Access denied.")
+                        st.error("Galat Username ya Password!")
         st.stop()
 
-    # Admin Logged In Screen
+    # Admin Dashboard Header
     st.sidebar.success(f"👑 Admin Logged In: `{ADMIN_USERNAME}`")
     if st.sidebar.button("Log Out Admin"):
         st.session_state.admin_authenticated = False
@@ -193,21 +198,24 @@ if selected_portal == "⚙️ Admin Control Center":
 
     tab1, tab2, tab3 = st.tabs(["🖨️ Student Responses & Print", "⏱️ Exam Settings & Student Password", "📝 Question Bank"])
 
-    # TAB 1: SUBMISSIONS & PRINTABLE A4
+    # --- TAB 1: RESPONSES & PRINTABLE A4 ---
     with tab1:
         st.subheader("Student Results with Timestamp (Print Ready)")
         
         conn = get_db()
-        subs_df = pd.read_sql_query(
-            "SELECT student_name, email, score, total_questions, submitted_at FROM submissions ORDER BY id DESC", 
-            conn
-        )
+        try:
+            subs_df = pd.read_sql_query(
+                "SELECT student_name, email, score, total_questions, submitted_at FROM submissions ORDER BY id DESC", 
+                conn
+            )
+        except Exception:
+            subs_df = pd.DataFrame()
         conn.close()
         
         if subs_df.empty:
             st.info("Abhi tak kisi bhi student ne test submit nahi kiya hai.")
         else:
-            st.write("### 1. Overall Batch Results")
+            st.write("### 1. Overall Batch Result")
             st.dataframe(subs_df, use_container_width=True)
             
             csv_data = subs_df.to_csv(index=False).encode('utf-8')
@@ -292,7 +300,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     <button onclick="window.print()" style="background-color: #007bff; color: white; border: none; padding: 10px 22px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">🖨️ Print / Save as PDF This Answer Sheet</button>
                 """, height=620, scrolling=True)
 
-    # TAB 2: TIMING & EXAM PASSWORD
+    # --- TAB 2: TIMING & PASSWORD ---
     with tab2:
         st.subheader("Quiz Timing & Student Exam Access Password")
         
@@ -314,11 +322,11 @@ if selected_portal == "⚙️ Admin Control Center":
             update_setting("duration_minutes", new_duration)
             update_setting("student_exam_password", new_student_pwd)
             update_setting("is_active", "1" if new_active else "0")
-            st.success("Settings aur Student Password successfully update ho gaye!")
+            st.success("Settings successfully save ho gayi hain!")
             time.sleep(1)
             st.rerun()
 
-    # TAB 3: QUESTION BANK
+    # --- TAB 3: QUESTIONS MANAGEMENT ---
     with tab3:
         st.subheader("Manage Question Bank")
         
@@ -348,7 +356,7 @@ if selected_portal == "⚙️ Admin Control Center":
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("Sabhi fields bharna zaroori hai.")
+                        st.error("Sabhi fields bharna compulsory hai.")
 
         st.markdown("---")
         conn = get_db()
@@ -372,9 +380,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.divider()
 
 # ==========================================
-# ==========================================
 # 5. STUDENT EXAM PORTAL
-# ==========================================
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -386,10 +392,10 @@ else:
     if "start_timestamp" not in st.session_state:
         st.session_state.start_timestamp = None
 
-    # Student Login Gate
+    # Student Login Form
     if not st.session_state.student_email:
         st.title("🎓 Student Examination Login Portal")
-        st.markdown("Yeh platform strictly monitored hai. Apni details aur teacher dwara diya gaya **Exam Password** darj karein.")
+        st.markdown("Yeh platform strictly monitored hai. Apni details aur teacher dwara diya gaya **Exam Password** enter karein.")
         
         col1, _ = st.columns([1.2, 1])
         with col1:
@@ -398,7 +404,7 @@ else:
                 in_email = st.text_input("Student Gmail ID (@gmail.com):", placeholder="student@gmail.com")
                 in_pwd = st.text_input("Exam Password (Given by Teacher):", type="password")
                 
-                submit_login = st.form_submit_button("Enter Exam Hall", type="primary")
+                submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
                 
                 if submit_login:
                     clean_name = in_name.strip()
@@ -412,14 +418,14 @@ else:
                     elif not (clean_email.endswith("@gmail.com") and len(clean_email) > 10):
                         st.error("Kripya ek valid Gmail ID darj karein (@gmail.com).")
                     elif clean_pwd != required_exam_pwd:
-                        st.error("Galat Exam Password! Sirf teacher ke diye huye password se login karein.")
+                        st.error("Galat Exam Password! Kripya apne teacher dwara diya gaya password use karein.")
                     else:
                         st.session_state.student_name = clean_name
                         st.session_state.student_email = clean_email
                         st.rerun()
         st.stop()
 
-    # Student Dashboard / Exam Screen
+    # Student Exam Dashboard
     student_name = st.session_state.student_name
     student_email = st.session_state.student_email
 
@@ -427,7 +433,7 @@ else:
     quiz_duration = int(get_setting("duration_minutes", 15))
     is_active = (get_setting("is_active", "1") == "1")
 
-    st.sidebar.markdown(f"**Student Name:** `{student_name}`")
+    st.sidebar.markdown(f"**Student:** `{student_name}`")
     st.sidebar.markdown(f"**Gmail:** `{student_email}`")
 
     if st.sidebar.button("Log Out"):
@@ -446,8 +452,11 @@ else:
     # Check already submitted
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM submissions WHERE email = ?", (student_email,))
-    submission = c.fetchone()
+    try:
+        c.execute("SELECT * FROM submissions WHERE email = ?", (student_email,))
+        submission = c.fetchone()
+    except Exception:
+        submission = None
     conn.close()
 
     if submission:
@@ -458,7 +467,7 @@ else:
 
     questions_df = get_questions()
     if questions_df.empty:
-        st.info("Abhi exam me koi question upload nahi hua hai.")
+        st.info("Abhi exam me koi question available nahi hai.")
         st.stop()
 
     if not st.session_state.test_started:
@@ -468,9 +477,9 @@ else:
         - **Total Duration:** `{quiz_duration} Minutes`
         - **Total Questions:** `{len(questions_df)}`
         - **Anti-Cheating Rules:**
-            1. Dusri tab ya app switch karne par warning prompt aayegi aur log save hoga.
-            2. Copy-paste aur Right-click block rahenge.
-            3. Ek baar start hone ke baad timer continuously chalega.
+            1. Dusri window ya tab switch karte hi warning trigger hogi aur log record hoga.
+            2. Copy-paste aur Right click disabled hain.
+            3. Timer continuous chalega, refresh karne se reset nahi hoga.
         """)
         if st.button("🚀 Start Examination Now", type="primary"):
             st.session_state.test_started = True
@@ -478,7 +487,6 @@ else:
             st.rerun()
         st.stop()
 
-    # Proctoring JS injection
     inject_security_scripts()
 
     # Countdown Timer
@@ -493,10 +501,10 @@ else:
     mins, secs = divmod(int(remaining), 60)
     t1, t2 = st.columns([3, 1])
     t1.markdown(f"Candidate: **{student_name}** (`{student_email}`)")
-    t2.metric("⏳ Time Remaining", f"{mins:02d}:{secs:02d}")
+    t2.metric("⏳ Time Left", f"{mins:02d}:{secs:02d}")
     st.divider()
 
-    # Test Form
+    # Exam Form
     with st.form("exam_form"):
         answers = {}
         for idx, row in questions_df.iterrows():
