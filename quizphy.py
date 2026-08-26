@@ -6,24 +6,25 @@ from datetime import datetime
 import streamlit.components.v1 as components
 
 # ==========================================
-# 1. PAGE SETUP
+# 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="Proctored Quiz & Exam Portal",
+    page_title="Proctored Quiz Portal",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "quiz_master.db"
+DB_FILE = "quiz_portal_v2.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
 # ==========================================
-# 2. DATABASE MANAGEMENT & SAFE MIGRATION
+# 2. BULLETPROOF DATABASE CONNECTION
 # ==========================================
 def get_db():
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -31,7 +32,6 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # Settings Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -39,7 +39,6 @@ def init_db():
         )
     ''')
     
-    # Questions Bank Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +51,6 @@ def init_db():
         )
     ''')
     
-    # Authorized Students List Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS authorized_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,13 +58,6 @@ def init_db():
         )
     ''')
     
-    # Submissions Table (Drop & recreate safely if old schema is detected)
-    try:
-        c.execute("SELECT student_name FROM submissions LIMIT 1")
-    except sqlite3.OperationalError:
-        c.execute("DROP TABLE IF EXISTS submissions")
-        c.execute("DROP TABLE IF EXISTS student_responses")
-
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +87,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('is_active', '1')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('student_exam_password', 'EXAM123')")
     
-    # Default Sample Questions
+    # Sample Questions
     c.execute("SELECT COUNT(*) FROM questions")
     if c.fetchone()[0] == 0:
         sample_q = [
@@ -142,20 +133,65 @@ def get_authorized_students():
     conn.close()
     return [str(s).strip() for s in df['student_name'].tolist()]
 
-# Anti-Cheating JavaScript
-def inject_security_scripts():
-    js = """
+# Anti-Cheating & Live Timer Component
+def inject_live_timer_and_security(remaining_seconds):
+    timer_js = f"""
+    <div id="sticky-timer-box" style="
+        position: fixed; 
+        top: 60px; 
+        right: 25px; 
+        background: #ff4b4b; 
+        color: #ffffff; 
+        padding: 12px 24px; 
+        border-radius: 10px; 
+        font-family: monospace; 
+        font-size: 22px; 
+        font-weight: bold; 
+        z-index: 999999;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        border: 2px solid white;
+    ">
+        ⏳ <span id="timer-display">Loading...</span>
+    </div>
+
     <script>
-    window.addEventListener('blur', function() {
-        alert('⚠️ Warning: Window ya Tab switch detect hua hai! Yeh activity log ho chuki hai.');
-    });
-    document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
-    document.addEventListener('copy', function(e) { e.preventDefault(); });
-    document.addEventListener('cut', function(e) { e.preventDefault(); });
-    document.addEventListener('paste', function(e) { e.preventDefault(); });
+    let timeLeft = {int(remaining_seconds)};
+    let display = document.getElementById('timer-display');
+
+    function updateTimer() {{
+        if (timeLeft <= 0) {{
+            display.innerHTML = "TIME UP!";
+            display.style.color = "yellow";
+            // Auto click submit button on time out
+            let buttons = window.parent.document.querySelectorAll('button');
+            buttons.forEach(btn => {{
+                if (btn.innerText.includes("Submit Final Answers")) {{
+                    btn.click();
+                }}
+            }});
+            return;
+        }}
+
+        let mins = Math.floor(timeLeft / 60);
+        let secs = timeLeft % 60;
+        display.innerHTML = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
+        timeLeft--;
+    }}
+
+    updateTimer();
+    setInterval(updateTimer, 1000);
+
+    // Anti-Cheating Protection
+    window.addEventListener('blur', function() {{
+        alert('⚠️ Warning: Window switch detect hua hai! Yeh activity log ho chuki hai.');
+    }});
+    document.addEventListener('contextmenu', function(e) {{ e.preventDefault(); }});
+    document.addEventListener('copy', function(e) {{ e.preventDefault(); }});
+    document.addEventListener('cut', function(e) {{ e.preventDefault(); }});
+    document.addEventListener('paste', function(e) {{ e.preventDefault(); }});
     </script>
     """
-    components.html(js, height=0, width=0)
+    components.html(timer_js, height=80)
 
 # ==========================================
 # 3. SIDEBAR NAVIGATION
@@ -171,7 +207,7 @@ if selected_portal == "⚙️ Admin Control Center":
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
 
-    # Admin Login Gateway
+    # Admin Login
     if not st.session_state.admin_authenticated:
         st.title("🔐 Admin Login Portal")
         st.markdown("Yahan se sirf authorized teacher/admin access kar sakte hain.")
@@ -207,7 +243,7 @@ if selected_portal == "⚙️ Admin Control Center":
         "⏱️ Exam Settings & Password"
     ])
 
-    # --- TAB 1: RESPONSES & PRINTABLE A4 ---
+    # --- TAB 1: RESPONSES & PRINT ---
     with tab1:
         st.subheader("Student Results with Timestamp (Print Ready)")
         
@@ -307,7 +343,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     <button onclick="window.print()" style="background-color: #007bff; color: white; border: none; padding: 10px 22px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">🖨️ Print / Save as PDF This Answer Sheet</button>
                 """, height=620, scrolling=True)
 
-    # --- TAB 2: AUTHORIZED STUDENTS (EXCEL / MANUAL) ---
+    # --- TAB 2: AUTHORIZED STUDENTS ---
     with tab2:
         st.subheader("👥 Manage Authorized Student Names")
         
@@ -392,7 +428,7 @@ if selected_portal == "⚙️ Admin Control Center":
                 time.sleep(1)
                 st.rerun()
 
-    # --- TAB 3: QUESTIONS BANK (EXCEL / MANUAL) ---
+    # --- TAB 3: QUESTIONS BANK ---
     with tab3:
         st.subheader("📝 Manage Question Bank")
         
@@ -522,7 +558,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.rerun()
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL (Name & Password Based)
+# 5. STUDENT EXAM PORTAL (Live Real-Time Timer)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -610,10 +646,10 @@ else:
         - **Candidate Name:** `{student_name}`
         - **Total Duration:** `{quiz_duration} Minutes`
         - **Total Questions:** `{len(questions_df)}`
-        - **Anti-Cheating Rules:**
-            1. Dusri window ya tab switch karte hi warning trigger hogi aur log record hoga.
-            2. Copy-paste aur Right click disabled hain.
-            3. Timer continuous chalega, refresh karne se reset nahi hoga.
+        - **Rules:**
+            1. Screen ke top-right me live countdown timer chalega.
+            2. Time khatam hone par test auto-submit ho jayega.
+            3. Tab switch karne par system warning generate karega.
         """)
         if st.button("🚀 Start Examination Now", type="primary"):
             st.session_state.test_started = True
@@ -621,9 +657,7 @@ else:
             st.rerun()
         st.stop()
 
-    inject_security_scripts()
-
-    # Countdown Timer
+    # Remaining Seconds Calculation
     elapsed = time.time() - st.session_state.start_timestamp
     total_sec = quiz_duration * 60
     remaining = total_sec - elapsed
@@ -632,11 +666,8 @@ else:
         st.error("⏰ Time Up! Samay samapt ho gaya hai.")
         st.stop()
 
-    mins, secs = divmod(int(remaining), 60)
-    t1, t2 = st.columns([3, 1])
-    t1.markdown(f"Candidate: **{student_name}**")
-    t2.metric("⏳ Time Left", f"{mins:02d}:{secs:02d}")
-    st.divider()
+    # Live Floating Real-time Timer Inject
+    inject_live_timer_and_security(remaining)
 
     # Exam Form
     with st.form("exam_form"):
