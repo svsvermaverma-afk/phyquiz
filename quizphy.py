@@ -2,7 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import streamlit.components.v1 as components
 
 # ==========================================
@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "multi_quiz_portal_v3.db"
+DB_FILE = "multi_quiz_portal_v4.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -32,7 +32,7 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1. Quizzes Table (Multiple Quizzes Support for Class 11, Class 12, etc.)
+    # 1. Quizzes Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,7 +45,7 @@ def init_db():
         )
     ''')
     
-    # 2. Questions Bank Table (Linked with quiz_id)
+    # 2. Questions Bank Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +60,7 @@ def init_db():
         )
     ''')
     
-    # 3. Authorized Students Table (Linked with quiz_id)
+    # 3. Authorized Students Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS authorized_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,7 +71,7 @@ def init_db():
         )
     ''')
     
-    # 4. Overall Submissions Table (Tracks Tab Switches & Score)
+    # 4. Overall Submissions Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,12 +101,12 @@ def init_db():
         )
     ''')
     
-    # Insert Default Demo Quizzes if empty
+    # Insert Demo Quizzes safely using timedelta
     c.execute("SELECT COUNT(*) FROM quizzes")
     if c.fetchone()[0] == 0:
-        default_start = datetime.now().strftime("%Y-%m-%d %H:%M")
-        # Default 7 days future end time
-        default_end = datetime.now().replace(day=datetime.now().day + 7).strftime("%Y-%m-%d %H:%M")
+        now_time = datetime.now()
+        default_start = now_time.strftime("%Y-%m-%d %H:%M")
+        default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
         
         c.execute('''
             INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, exam_password, is_active)
@@ -151,13 +151,7 @@ def init_db():
 
 init_db()
 
-# DB Helper Functions
-def get_db():
-    conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.row_factory = sqlite3.Row
-    return conn
-
+# DB Helpers
 def get_all_quizzes():
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM quizzes", conn)
@@ -176,7 +170,7 @@ def get_authorized_students(quiz_id):
     conn.close()
     return [str(s).strip() for s in df['student_name'].tolist()]
 
-# Live Timer & Advanced Anti-Cheating Script (Tab Switch Counter & Block)
+# Live Real-time Timer & Anti-Cheating Script
 def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     timer_js = f"""
     <div id="sticky-timer-box" style="
@@ -225,17 +219,16 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     updateTimer();
     setInterval(updateTimer, 1000);
 
-    // Strict Tab Switch Detection
+    // Tab Switch Detection & Warning
     window.addEventListener('blur', function() {{
         tabSwitches++;
         sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
         switchCountElem.innerHTML = tabSwitches;
         
-        // Send async log or alert
-        alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detect hua hai! Bar-bar tab badalne par test block ho jayega.');
+        alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detect hua hai! Bar-bar tab badalne par test auto-submit ho jayega.');
         
         if (tabSwitches >= 3) {{
-            alert('❌ Aapne limit se zyada baar tab switch kiya hai. Aapka test block kiya ja raha hai.');
+            alert('❌ Maximum limit reach ho gayi hai. Test auto-submit ho raha hai.');
             let buttons = window.parent.document.querySelectorAll('button');
             buttons.forEach(btn => {{
                 if (btn.innerText.includes("Submit Final Answers")) {{
@@ -267,6 +260,7 @@ if selected_portal == "⚙️ Admin Control Center":
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
 
+    # Secure Admin Login Screen (No hints/passwords visible)
     if not st.session_state.admin_authenticated:
         st.title("🔐 Admin Login Portal")
         st.markdown("Yahan se sirf authorized teacher/admin access kar sakte hain.")
@@ -274,8 +268,8 @@ if selected_portal == "⚙️ Admin Control Center":
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("admin_login_form"):
-                in_user = st.text_input("Admin Username:", placeholder="admin")
-                in_pass = st.text_input("Admin Password:", type="password", placeholder="Admin@2026")
+                in_user = st.text_input("Admin Username:")
+                in_pass = st.text_input("Admin Password:", type="password")
                 btn_login = st.form_submit_button("Sign In as Admin", type="primary")
                 
                 if btn_login:
@@ -285,7 +279,7 @@ if selected_portal == "⚙️ Admin Control Center":
                         time.sleep(0.5)
                         st.rerun()
                     else:
-                        st.error("Galat Username ya Password!")
+                        st.error("Galat Username ya Password! Access Denied.")
         st.stop()
 
     st.sidebar.success(f"👑 Admin Logged In: `{ADMIN_USERNAME}`")
@@ -363,7 +357,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             </tr>
                             <tr>
                                 <td><strong>Score:</strong> <span style="color: green; font-weight: bold;">{student_summary['score']} / {student_summary['total_questions']}</span></td>
-                                <td style="text-align: right;"><strong>Tab Switches Detected:</strong> <span style="color: red; font-weight: bold;">{student_summary['tab_switches']} times</span></td>
+                                <td style="text-align: right;"><strong>Tab Switches:</strong> <span style="color: red; font-weight: bold;">{student_summary['tab_switches']} times</span></td>
                             </tr>
                         </table>
                         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
@@ -403,21 +397,21 @@ if selected_portal == "⚙️ Admin Control Center":
         
         with st.expander("➕ Create New Quiz (Class 11 / Class 12)", expanded=True):
             with st.form("new_quiz_form"):
-                q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Final):")
+                q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Unit 1):")
                 q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
-                q_pwd = st.text_input("Student Exam Password:", value="EXAM123")
+                q_pwd = st.text_input("Student Exam Password (Jo aap bachcho ko denge):", type="password")
                 
                 c_d1, c_d2 = st.columns(2)
                 start_date = c_d1.date_input("Start Date:")
                 start_time = c_d1.time_input("Start Time:")
-                end_date = c_d2.date_input("End Date:")
+                end_date = c_d2.date_input("End Date:", value=datetime.now().date() + timedelta(days=7))
                 end_time = c_d2.time_input("End Time:")
                 
                 submitted_quiz = st.form_submit_button("Create Quiz")
                 if submitted_quiz:
                     start_str = f"{start_date} {start_time.strftime('%H:%M')}"
                     end_str = f"{end_date} {end_time.strftime('%H:%M')}"
-                    if q_title:
+                    if q_title and q_pwd:
                         try:
                             conn = get_db()
                             c = conn.cursor()
@@ -427,24 +421,23 @@ if selected_portal == "⚙️ Admin Control Center":
                             ''', (q_title, q_dur, start_str, end_str, q_pwd))
                             conn.commit()
                             conn.close()
-                            st.success(f"Quiz '{q_title}' successfully create ho gaya!")
+                            st.success(f"Quiz '{q_title}' successfully ban gaya!")
                             time.sleep(1)
                             st.rerun()
                         except sqlite3.IntegrityError:
-                            st.error("Is naam se quiz pehle se maujood hai.")
+                            st.error("Is naam se quiz pehle se bana hua hai.")
                     else:
-                        st.error("Quiz title bharna zaroori hai.")
+                        st.error("Quiz title aur Password bharna compulsory hai.")
 
         st.markdown("---")
         st.write("### Existing Quizzes")
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
-                    st.markdown(f"**{r['quiz_title']}** | Duration: `{r['duration_minutes']} mins` | Password: `{r['exam_password']}`")
+                    st.markdown(f"**{r['quiz_title']}** | Duration: `{r['duration_minutes']} mins` | Status: `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
-                    col_q1, col_q2 = st.columns(2)
-                    if col_q1.button(f"Toggle Active Status ({r['quiz_title']})", key=f"tog_{r['id']}"):
+                    if st.button(f"Toggle Active/Inactive ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
                         conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
@@ -586,7 +579,7 @@ else:
         with col1:
             with st.form("student_login_form"):
                 sel_quiz_title = st.selectbox("Select Quiz / Class:", list(quiz_opts.keys()))
-                in_name = st.text_input("Student Name (As per authorized list):")
+                in_name = st.text_input("Student Name:")
                 in_pwd = st.text_input("Exam Password (Given by Teacher):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
@@ -596,14 +589,12 @@ else:
                     clean_name = in_name.strip()
                     clean_pwd = in_pwd.strip()
                     
-                    # Fetch Quiz Details & Timing
                     conn = get_db()
                     q_data = conn.execute("SELECT * FROM quizzes WHERE id = ?", (q_id,)).fetchone()
                     conn.close()
                     
                     auth_names = [n.lower() for n in get_authorized_students(q_id)]
                     
-                    # Time Window Check
                     now = datetime.now()
                     start_dt = datetime.strptime(q_data['start_datetime'], "%Y-%m-%d %H:%M")
                     end_dt = datetime.strptime(q_data['end_datetime'], "%Y-%m-%d %H:%M")
@@ -643,7 +634,6 @@ else:
 
     st.title(f"📝 {quiz_info['quiz_title']}")
 
-    # Check already submitted
     conn = get_db()
     sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
     conn.close()
@@ -664,9 +654,9 @@ else:
         st.markdown(f"""
         - **Duration:** `{quiz_info['duration_minutes']} Minutes`
         - **Total Questions:** `{len(questions_df)}`
-        - **Strict Rules:**
-            1. Tab switch / app minimize karne par warning aayegi aur count admin panel me log hoga.
-            2. 3 ya usse zyada baar tab switch karne par test automatically block/submit ho jayega.
+        - **Rules:**
+            1. Tab switch / app minimize karne par warning aayegi aur count admin panel me record hoga.
+            2. 3 baar tab switch karne par test auto-submit ho jayega.
             3. Timer continuous chalega.
         """)
         if st.button("🚀 Start Exam Now", type="primary"):
@@ -675,7 +665,6 @@ else:
             st.rerun()
         st.stop()
 
-    # Timer calculation
     elapsed = time.time() - st.session_state.start_timestamp
     total_sec = quiz_info['duration_minutes'] * 60
     remaining = total_sec - elapsed
@@ -686,7 +675,7 @@ else:
 
     inject_live_timer_and_security(remaining, quiz_id, student_name)
 
-    # Quiz Form
+    # Exam Form
     with st.form("exam_form"):
         answers = {}
         for idx, row in questions_df.iterrows():
