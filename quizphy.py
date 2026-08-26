@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "multi_quiz_portal_v6.db"
+DB_FILE = "multi_quiz_portal_v7.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -27,12 +27,11 @@ def get_ist_now():
     return datetime.now(timezone.utc).astimezone(IST)
 
 # ==========================================
-# 2. DATABASE MANAGEMENT
+# 2. BULLETPROOF DATABASE CONNECTION
 # ==========================================
 def get_db():
     conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA foreign_keys = ON;")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -63,8 +62,7 @@ def init_db():
             option_b TEXT NOT NULL,
             option_c TEXT NOT NULL,
             option_d TEXT NOT NULL,
-            correct_option TEXT NOT NULL,
-            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
+            correct_option TEXT NOT NULL
         )
     ''')
     
@@ -74,7 +72,6 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             quiz_id INTEGER NOT NULL,
             student_name TEXT NOT NULL,
-            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
             UNIQUE(quiz_id, student_name)
         )
     ''')
@@ -90,7 +87,6 @@ def init_db():
             tab_switches INTEGER DEFAULT 0,
             status TEXT DEFAULT 'Completed',
             submitted_at TEXT NOT NULL,
-            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
             UNIQUE(quiz_id, student_name)
         )
     ''')
@@ -106,55 +102,60 @@ def init_db():
             selected_option TEXT,
             correct_option TEXT NOT NULL,
             is_correct INTEGER NOT NULL,
-            recorded_at TEXT NOT NULL,
-            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
+            recorded_at TEXT NOT NULL
         )
     ''')
     
-    # Insert Demo Quizzes if empty
-    c.execute("SELECT COUNT(*) FROM quizzes")
-    if c.fetchone()[0] == 0:
-        now_time = get_ist_now() - timedelta(hours=1) # 1 hour pehle se active
-        default_start = now_time.strftime("%Y-%m-%d %H:%M")
-        default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
-        
-        c.execute('''
-            INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, exam_password, is_active)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', ("Class 11 - Physics Periodic Test", 15, default_start, default_end, "EXAM11", 1))
-        
-        q_id_1 = c.lastrowid
-        c.executemany('''
-            INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', [
-            (q_id_1, "What is the SI unit of Force?", "Pascal", "Newton", "Joule", "Watt", "Newton"),
-            (q_id_1, "Dimensional formula of Work is?", "[MLT-2]", "[ML2T-2]", "[MLT-1]", "[ML2T-1]", "[ML2T-2]")
-        ])
-        
-        c.executemany('''
-            INSERT INTO authorized_students (quiz_id, student_name)
-            VALUES (?, ?)
-        ''', [(q_id_1, "Aman Verma"), (q_id_1, "Rohan Sharma"), (q_id_1, "Shashank Verma")])
+    # Insert Initial Sample Data safely with INSERT OR IGNORE
+    now_time = get_ist_now() - timedelta(hours=1)
+    default_start = now_time.strftime("%Y-%m-%d %H:%M")
+    default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
+    
+    c.execute('''
+        INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, exam_password, is_active)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', ("Class 11 - Physics Periodic Test", 15, default_start, default_end, "EXAM11", 1))
+    
+    c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Periodic Test",))
+    row1 = c.fetchone()
+    if row1:
+        q_id_1 = row1[0]
+        c.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (q_id_1,))
+        if c.fetchone()[0] == 0:
+            c.executemany('''
+                INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', [
+                (q_id_1, "What is the SI unit of Force?", "Pascal", "Newton", "Joule", "Watt", "Newton"),
+                (q_id_1, "Dimensional formula of Work is?", "[MLT-2]", "[ML2T-2]", "[MLT-1]", "[ML2T-1]", "[ML2T-2]")
+            ])
+            c.executemany('''
+                INSERT OR IGNORE INTO authorized_students (quiz_id, student_name)
+                VALUES (?, ?)
+            ''', [(q_id_1, "Aman Verma"), (q_id_1, "Rohan Sharma"), (q_id_1, "Shashank Verma")])
 
-        c.execute('''
-            INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, exam_password, is_active)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', ("Class 12 - Physics Board Mock", 20, default_start, default_end, "EXAM12", 1))
-        
-        q_id_2 = c.lastrowid
-        c.executemany('''
-            INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', [
-            (q_id_2, "SI unit of Electric Charge is?", "Coulomb", "Ampere", "Volt", "Ohm", "Coulomb"),
-            (q_id_2, "Permittivity of free space (epsilon_0) value is?", "8.85 x 10^-12", "9 x 10^9", "1.6 x 10^-19", "3 x 10^8", "8.85 x 10^-12")
-        ])
-        
-        c.executemany('''
-            INSERT INTO authorized_students (quiz_id, student_name)
-            VALUES (?, ?)
-        ''', [(q_id_2, "Abhishek Gupta"), (q_id_2, "Priya Singh")])
+    c.execute('''
+        INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, exam_password, is_active)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', ("Class 12 - Physics Board Mock", 20, default_start, default_end, "EXAM12", 1))
+    
+    c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 12 - Physics Board Mock",))
+    row2 = c.fetchone()
+    if row2:
+        q_id_2 = row2[0]
+        c.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (q_id_2,))
+        if c.fetchone()[0] == 0:
+            c.executemany('''
+                INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', [
+                (q_id_2, "SI unit of Electric Charge is?", "Coulomb", "Ampere", "Volt", "Ohm", "Coulomb"),
+                (q_id_2, "Permittivity of free space (epsilon_0) value is?", "8.85 x 10^-12", "9 x 10^9", "1.6 x 10^-19", "3 x 10^8", "8.85 x 10^-12")
+            ])
+            c.executemany('''
+                INSERT OR IGNORE INTO authorized_students (quiz_id, student_name)
+                VALUES (?, ?)
+            ''', [(q_id_2, "Abhishek Gupta"), (q_id_2, "Priya Singh")])
 
     conn.commit()
     conn.close()
@@ -229,7 +230,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     updateTimer();
     setInterval(updateTimer, 1000);
 
-    // Tab Switch Detection
+    // Tab Switch Detection & Warning
     window.addEventListener('blur', function() {{
         tabSwitches++;
         sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
@@ -439,7 +440,6 @@ if selected_portal == "⚙️ Admin Control Center":
                 q_pwd = st.text_input("Student Exam Password (Jo aap bachcho ko denge):", type="password")
                 
                 c_d1, c_d2 = st.columns(2)
-                # Default start time 10 mins ago to allow immediate access
                 cur_ist = get_ist_now()
                 start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
                 start_time = c_d1.time_input("Start Time (IST):", value=(cur_ist - timedelta(minutes=10)).time())
@@ -531,9 +531,9 @@ if selected_portal == "⚙️ Admin Control Center":
                                 clean_n = str(name).strip()
                                 if clean_n:
                                     try:
-                                        cur.execute("INSERT INTO authorized_students (quiz_id, student_name) VALUES (?, ?)", (sel_q_id, clean_n))
+                                        cur.execute("INSERT OR IGNORE INTO authorized_students (quiz_id, student_name) VALUES (?, ?)", (sel_q_id, clean_n))
                                         cnt += 1
-                                    except sqlite3.IntegrityError:
+                                    except Exception:
                                         pass
                             conn.commit()
                             conn.close()
@@ -584,7 +584,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                 cur.execute('''
                                     INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ''', (sel_q_id, r["question"], r["option_a"], r["option_b"], r["option_c"], r["option_d"], r["correct_option"]))
+                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(r["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
                                 cnt += 1
                             conn.commit()
                             conn.close()
@@ -733,7 +733,6 @@ else:
                     
                     auth_names = [n.lower() for n in get_authorized_students(q_id)]
                     
-                    # Current Indian Standard Time comparison
                     now_ist = get_ist_now().replace(tzinfo=None)
                     
                     try:
