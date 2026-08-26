@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import time
+import io
 from datetime import datetime, timedelta
 import streamlit.components.v1 as components
 
@@ -15,16 +16,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "multi_quiz_portal_v4.db"
+DB_FILE = "multi_quiz_portal_v5.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
 # ==========================================
-# 2. BULLETPROOF DATABASE CONNECTION
+# 2. BULLETPROOF DATABASE SETUP
 # ==========================================
 def get_db():
     conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA foreign_keys = ON;")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -82,6 +84,7 @@ def init_db():
             tab_switches INTEGER DEFAULT 0,
             status TEXT DEFAULT 'Completed',
             submitted_at TEXT NOT NULL,
+            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE,
             UNIQUE(quiz_id, student_name)
         )
     ''')
@@ -97,11 +100,12 @@ def init_db():
             selected_option TEXT,
             correct_option TEXT NOT NULL,
             is_correct INTEGER NOT NULL,
-            recorded_at TEXT NOT NULL
+            recorded_at TEXT NOT NULL,
+            FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
         )
     ''')
     
-    # Insert Demo Quizzes safely using timedelta
+    # Insert Demo Quizzes only if database is completely fresh
     c.execute("SELECT COUNT(*) FROM quizzes")
     if c.fetchone()[0] == 0:
         now_time = datetime.now()
@@ -260,7 +264,7 @@ if selected_portal == "⚙️ Admin Control Center":
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
 
-    # Secure Admin Login Screen (No hints/passwords visible)
+    # Secure Admin Login Screen
     if not st.session_state.admin_authenticated:
         st.title("🔐 Admin Login Portal")
         st.markdown("Yahan se sirf authorized teacher/admin access kar sakte hain.")
@@ -287,22 +291,23 @@ if selected_portal == "⚙️ Admin Control Center":
         st.session_state.admin_authenticated = False
         st.rerun()
 
-    st.title("⚙️ Multi-Class Quiz & Admin Management Center")
+    st.title("⚙️ Teacher & Exam Control Center")
 
     quizzes_df = get_all_quizzes()
     
     admin_tab = st.selectbox("Select Management Section:", [
-        "📊 Student Results & Tab Switch Logs", 
+        "📊 Student Results & Delete Controls", 
         "📚 Create & Manage Quizzes (Class 11, 12 etc.)", 
         "👥 Allowed Students (Excel/Manual)", 
-        "📝 Question Bank (Excel/Manual)"
+        "📝 Question Bank (Excel/Manual)",
+        "💾 Full Database Backup & Restore (Excel)"
     ])
 
     st.divider()
 
-    # --- SECTION 1: RESULTS & TAB SWITCH LOGS ---
-    if admin_tab == "📊 Student Results & Tab Switch Logs":
-        st.subheader("Student Submissions, Scores & Anti-Cheat Tab Switch Logs")
+    # --- SECTION 1: RESULTS & INDIVIDUAL/BULK DELETE ---
+    if admin_tab == "📊 Student Results & Delete Controls":
+        st.subheader("Student Submissions, Scores & Audit Logs")
         
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
@@ -327,13 +332,38 @@ if selected_portal == "⚙️ Admin Control Center":
                 st.write("### Batch Performance & Security Audit Log")
                 st.dataframe(subs_df, use_container_width=True)
                 
-                csv_data = subs_df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Download Results & Cheat Logs (CSV)", data=csv_data, file_name=f"{sel_q_title}_results.csv", mime="text/csv")
+                col_d1, col_d2 = st.columns([2, 2])
+                with col_d1:
+                    csv_data = subs_df.to_csv(index=False).encode('utf-8')
+                    st.download_button("📥 Download Results (CSV)", data=csv_data, file_name=f"{sel_q_title}_results.csv", mime="text/csv")
+                
+                with col_d2:
+                    if st.button(f"🗑️ Clear ALL Submissions for {sel_q_title}", type="secondary"):
+                        conn = get_db()
+                        conn.execute("DELETE FROM submissions WHERE quiz_id = ?", (sel_q_id,))
+                        conn.execute("DELETE FROM student_responses WHERE quiz_id = ?", (sel_q_id,))
+                        conn.commit()
+                        conn.close()
+                        st.warning(f"Sabhi submissions {sel_q_title} ke liye delete ho gaye.")
+                        time.sleep(1)
+                        st.rerun()
                 
                 st.divider()
-                st.write("### 🖨️ Print Individual Answer Sheet")
+                st.write("### 🖨️ View, Print or Delete Individual Student Answer Sheet")
                 student_display_list = subs_df['student_name'].tolist()
-                selected_student = st.selectbox("Select Student:", student_display_list)
+                
+                c_sel1, c_sel2 = st.columns([3, 1])
+                selected_student = c_sel1.selectbox("Select Student:", student_display_list)
+                
+                if c_sel2.button(f"🗑️ Delete {selected_student}'s Test"):
+                    conn = get_db()
+                    conn.execute("DELETE FROM submissions WHERE quiz_id = ? AND student_name = ?", (sel_q_id, selected_student))
+                    conn.execute("DELETE FROM student_responses WHERE quiz_id = ? AND student_name = ?", (sel_q_id, selected_student))
+                    conn.commit()
+                    conn.close()
+                    st.warning(f"'{selected_student}' ka response delete kar diya gaya.")
+                    time.sleep(1)
+                    st.rerun()
                 
                 if selected_student:
                     conn = get_db()
@@ -393,7 +423,7 @@ if selected_portal == "⚙️ Admin Control Center":
 
     # --- SECTION 2: CREATE & MANAGE QUIZZES ---
     elif admin_tab == "📚 Create & Manage Quizzes (Class 11, 12 etc.)":
-        st.subheader("Manage Quizzes, Timings & Access Windows")
+        st.subheader("Manage Quizzes, Timings & Deletions")
         
         with st.expander("➕ Create New Quiz (Class 11 / Class 12)", expanded=True):
             with st.form("new_quiz_form"):
@@ -430,19 +460,29 @@ if selected_portal == "⚙️ Admin Control Center":
                         st.error("Quiz title aur Password bharna compulsory hai.")
 
         st.markdown("---")
-        st.write("### Existing Quizzes")
+        st.write("### Existing Quizzes List")
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
                     st.markdown(f"**{r['quiz_title']}** | Duration: `{r['duration_minutes']} mins` | Status: `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
-                    if st.button(f"Toggle Active/Inactive ({r['quiz_title']})", key=f"tog_{r['id']}"):
+                    col_q1, col_q2 = st.columns([1, 1])
+                    if col_q1.button(f"Toggle Active Status ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
                         conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
                         conn.commit()
                         conn.close()
+                        st.rerun()
+                    
+                    if col_q2.button(f"🗑️ Delete Entire Quiz ({r['quiz_title']})", key=f"del_quiz_{r['id']}", type="secondary"):
+                        conn = get_db()
+                        conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning(f"Quiz '{r['quiz_title']}' successfully delete kar diya gaya.")
+                        time.sleep(1)
                         st.rerun()
                     st.divider()
 
@@ -487,6 +527,16 @@ if selected_portal == "⚙️ Admin Control Center":
             st.write(f"### Allowed Students in: {sel_q_title}")
             auth_list = get_authorized_students(sel_q_id)
             st.write(f"Total: {len(auth_list)}")
+            
+            if auth_list and st.button(f"🗑️ Remove ALL Students from {sel_q_title}"):
+                conn = get_db()
+                conn.execute("DELETE FROM authorized_students WHERE quiz_id = ?", (sel_q_id,))
+                conn.commit()
+                conn.close()
+                st.warning("Sabhi students list se hata diye gaye.")
+                time.sleep(1)
+                st.rerun()
+                
             for name in auth_list:
                 c1, c2 = st.columns([4, 1])
                 c1.markdown(f"👤 {name}")
@@ -548,8 +598,87 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.rerun()
                 st.divider()
 
+    # --- SECTION 5: FULL DATABASE BACKUP & RESTORE ---
+    elif admin_tab == "💾 Full Database Backup & Restore (Excel)":
+        st.subheader("💾 Export & Import Complete Portal Data (Excel Backup)")
+        st.markdown("Is feature se aap apne poore portal ka data ek single **Excel (.xlsx)** file me safe save karke rakh sakte hain.")
+        
+        # 1. Export Excel Data
+        conn = get_db()
+        q_export = pd.read_sql_query("SELECT * FROM quizzes", conn)
+        ques_export = pd.read_sql_query("SELECT * FROM questions", conn)
+        stu_export = pd.read_sql_query("SELECT * FROM authorized_students", conn)
+        subs_export = pd.read_sql_query("SELECT * FROM submissions", conn)
+        resp_export = pd.read_sql_query("SELECT * FROM student_responses", conn)
+        conn.close()
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            q_export.to_excel(writer, sheet_name='Quizzes', index=False)
+            ques_export.to_excel(writer, sheet_name='Questions', index=False)
+            stu_export.to_excel(writer, sheet_name='Students', index=False)
+            subs_export.to_excel(writer, sheet_name='Submissions', index=False)
+            resp_export.to_excel(writer, sheet_name='Responses', index=False)
+        excel_data = output.getvalue()
+        
+        st.download_button(
+            label="📥 Download Full Database Backup (.xlsx)",
+            data=excel_data,
+            file_name=f"Quiz_Portal_Complete_Backup_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        
+        st.divider()
+        st.write("### 📤 Restore Data from Excel Backup")
+        uploaded_backup = st.file_uploader("Upload previous Backup Excel file to restore data:", type=["xlsx"])
+        
+        if uploaded_backup:
+            if st.button("🚀 Restore Complete Data Now"):
+                try:
+                    excel_file = pd.ExcelFile(uploaded_backup)
+                    conn = get_db()
+                    cur = conn.cursor()
+                    
+                    if 'Quizzes' in excel_file.sheet_names:
+                        df_q = pd.read_excel(excel_file, sheet_name='Quizzes')
+                        for _, r in df_q.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO quizzes (id, quiz_title, duration_minutes, start_datetime, end_datetime, exam_password, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_title'], r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['exam_password'], r['is_active']))
+                    
+                    if 'Questions' in excel_file.sheet_names:
+                        df_ques = pd.read_excel(excel_file, sheet_name='Questions')
+                        for _, r in df_ques.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO questions (id, quiz_id, question, option_a, option_b, option_c, option_d, correct_option) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_id'], r['question'], r['option_a'], r['option_b'], r['option_c'], r['option_d'], r['correct_option']))
+                    
+                    if 'Students' in excel_file.sheet_names:
+                        df_stu = pd.read_excel(excel_file, sheet_name='Students')
+                        for _, r in df_stu.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO authorized_students (id, quiz_id, student_name) VALUES (?, ?, ?)",
+                                        (r['id'], r['quiz_id'], r['student_name']))
+                    
+                    if 'Submissions' in excel_file.sheet_names:
+                        df_subs = pd.read_excel(excel_file, sheet_name='Submissions')
+                        for _, r in df_subs.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO submissions (id, quiz_id, student_name, score, total_questions, tab_switches, status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_id'], r['student_name'], r['score'], r['total_questions'], r['tab_switches'], r['status'], r['submitted_at']))
+                    
+                    if 'Responses' in excel_file.sheet_names:
+                        df_resp = pd.read_excel(excel_file, sheet_name='Responses')
+                        for _, r in df_resp.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO student_responses (id, quiz_id, student_name, question_id, question_text, selected_option, correct_option, is_correct, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_id'], r['student_name'], r['question_id'], r['question_text'], r['selected_option'], r['correct_option'], r['is_correct'], r['recorded_at']))
+                    
+                    conn.commit()
+                    conn.close()
+                    st.success("✅ Sara data successfully restore ho gaya!")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Restore failed: {e}")
+
 # ==========================================
-# 5. STUDENT EXAM PORTAL (Class/Quiz Selector & Time Window)
+# 5. STUDENT EXAM PORTAL
 # ==========================================
 else:
     if "student_name" not in st.session_state:
