@@ -20,7 +20,7 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
 # ==========================================
-# 2. DATABASE MANAGEMENT & AUTO-MIGRATION
+# 2. DATABASE MANAGEMENT & SAFE MIGRATION
 # ==========================================
 def get_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -60,7 +60,13 @@ def init_db():
         )
     ''')
     
-    # Overall Submissions Table
+    # Submissions Table (Drop & recreate safely if old schema is detected)
+    try:
+        c.execute("SELECT student_name FROM submissions LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("DROP TABLE IF EXISTS submissions")
+        c.execute("DROP TABLE IF EXISTS student_responses")
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,7 +77,6 @@ def init_db():
         )
     ''')
     
-    # Detailed Question-Wise Responses Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,7 +140,7 @@ def get_authorized_students():
     conn = get_db()
     df = pd.read_sql_query("SELECT student_name FROM authorized_students", conn)
     conn.close()
-    return df['student_name'].tolist()
+    return [str(s).strip() for s in df['student_name'].tolist()]
 
 # Anti-Cheating JavaScript
 def inject_security_scripts():
@@ -306,7 +311,6 @@ if selected_portal == "⚙️ Admin Control Center":
     with tab2:
         st.subheader("👥 Manage Authorized Student Names")
         
-        # Excel Upload Option for Students
         with st.expander("📂 Bulk Upload Students via Excel / CSV File", expanded=True):
             st.markdown("Excel file me pehla column **`student_name`** ya **`Name`** hona chahiye.")
             uploaded_students_file = st.file_uploader("Upload Excel (.xlsx) or CSV file of Students:", type=["xlsx", "csv"], key="stu_file")
@@ -318,7 +322,6 @@ if selected_portal == "⚙️ Admin Control Center":
                     else:
                         stu_df = pd.read_excel(uploaded_students_file)
                     
-                    # Column detection
                     col_name = None
                     for c in stu_df.columns:
                         if c.strip().lower() in ["student_name", "name", "student name", "students"]:
@@ -326,7 +329,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             break
                     
                     if col_name is None:
-                        col_name = stu_df.columns[0] # Take first column if not found
+                        col_name = stu_df.columns[0]
                         
                     st.write("File Preview:")
                     st.dataframe(stu_df[[col_name]].head(5))
@@ -345,13 +348,12 @@ if selected_portal == "⚙️ Admin Control Center":
                                     pass
                         conn.commit()
                         conn.close()
-                        st.success(f"Successfully {added_count} naye students list me add ho gaye!")
+                        st.success(f"Successfully {added_count} naye students add ho gaye!")
                         time.sleep(1)
                         st.rerun()
                 except Exception as e:
                     st.error(f"File read karne me error: {e}")
 
-        # Manual Single Student Add
         with st.expander("➕ Add Single Student Manually", expanded=False):
             with st.form("manual_add_stu"):
                 new_student_name = st.text_input("Enter Student Full Name:")
@@ -394,7 +396,6 @@ if selected_portal == "⚙️ Admin Control Center":
     with tab3:
         st.subheader("📝 Manage Question Bank")
         
-        # Excel Upload Option for Questions
         with st.expander("📂 Bulk Upload Questions via Excel / CSV File", expanded=True):
             st.markdown("""
             **Excel format columns required:**
@@ -409,7 +410,6 @@ if selected_portal == "⚙️ Admin Control Center":
                     else:
                         q_file_df = pd.read_excel(uploaded_q_file)
                         
-                    # Standardize column headers
                     q_file_df.columns = [str(c).strip().lower().replace(" ", "_") for c in q_file_df.columns]
                     
                     st.write("Preview of Uploaded Questions:")
@@ -445,7 +445,6 @@ if selected_portal == "⚙️ Admin Control Center":
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
 
-        # Manual Single Question Add
         with st.expander("➕ Add Single Question Manually", expanded=False):
             with st.form("add_q_form"):
                 q_text = st.text_area("Question Statement:")
@@ -541,7 +540,7 @@ else:
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("student_login_form"):
-                in_name = st.text_input("Student Name (Jo list me registered hai):", placeholder="Shashank Verma")
+                in_name = st.text_input("Student Name (Jo list me registered hai):", placeholder="ABHISHEK GUPTA")
                 in_pwd = st.text_input("Exam Password (Given by Teacher):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
@@ -551,13 +550,13 @@ else:
                     clean_pwd = in_pwd.strip()
                     
                     required_exam_pwd = get_setting("student_exam_password", "EXAM123")
-                    authorized_names = get_authorized_students()
+                    authorized_names = [name.lower() for name in get_authorized_students()]
                     
                     if not clean_name:
                         st.error("Kripya apna naam darj karein.")
                     elif clean_pwd != required_exam_pwd:
                         st.error("Galat Exam Password! Teacher dwara diya gaya password daalein.")
-                    elif clean_name not in authorized_names:
+                    elif clean_name.lower() not in authorized_names:
                         st.error(f"❌ '{clean_name}' naam authorized list me nahi hai! Kripya teacher se sampark karein.")
                     else:
                         st.session_state.student_name = clean_name
@@ -588,7 +587,7 @@ else:
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute("SELECT * FROM submissions WHERE student_name = ?", (student_name,))
+        c.execute("SELECT * FROM submissions WHERE LOWER(student_name) = ?", (student_name.lower(),))
         submission = c.fetchone()
     except Exception:
         submission = None
@@ -657,6 +656,7 @@ else:
             conn = get_db()
             c = conn.cursor()
             
+            # Save student responses
             for _, row in questions_df.iterrows():
                 q_id = row['id']
                 sel_opt = answers.get(q_id)
@@ -679,8 +679,9 @@ else:
                     submission_time
                 ))
                 
+            # Save overall submission safely
             c.execute('''
-                INSERT INTO submissions (student_name, score, total_questions, submitted_at)
+                INSERT OR REPLACE INTO submissions (student_name, score, total_questions, submitted_at)
                 VALUES (?, ?, ?, ?)
             ''', (student_name, score, len(questions_df), submission_time))
             
