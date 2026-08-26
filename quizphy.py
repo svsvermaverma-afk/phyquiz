@@ -31,7 +31,7 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1. Settings Table
+    # Settings Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -39,7 +39,7 @@ def init_db():
         )
     ''')
     
-    # 2. Questions Bank Table
+    # Questions Bank Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,30 +52,30 @@ def init_db():
         )
     ''')
     
-    # 3. Overall Submissions Table
+    # Authorized Students List Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS authorized_students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_name TEXT UNIQUE NOT NULL
+        )
+    ''')
+    
+    # Overall Submissions Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_name TEXT DEFAULT 'Student',
-            email TEXT UNIQUE NOT NULL,
+            student_name TEXT UNIQUE NOT NULL,
             score INTEGER NOT NULL,
             total_questions INTEGER NOT NULL,
             submitted_at TEXT NOT NULL
         )
     ''')
     
-    # Safe Auto-Migration for submissions table
-    try:
-        c.execute("ALTER TABLE submissions ADD COLUMN student_name TEXT DEFAULT 'Student'")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-
-    # 4. Detailed Question-Wise Responses Table
+    # Detailed Question-Wise Responses Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_name TEXT DEFAULT 'Student',
-            email TEXT NOT NULL,
+            student_name TEXT NOT NULL,
             question_id INTEGER NOT NULL,
             question_text TEXT NOT NULL,
             selected_option TEXT,
@@ -85,19 +85,13 @@ def init_db():
         )
     ''')
     
-    # Safe Auto-Migration for student_responses table
-    try:
-        c.execute("ALTER TABLE student_responses ADD COLUMN student_name TEXT DEFAULT 'Student'")
-    except sqlite3.OperationalError:
-        pass
-
     # Default Settings
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('duration_minutes', '15')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('quiz_title', 'Physics & Science Assessment')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('is_active', '1')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('student_exam_password', 'EXAM123')")
     
-    # Default Questions if Table is Empty
+    # Default Sample Questions
     c.execute("SELECT COUNT(*) FROM questions")
     if c.fetchone()[0] == 0:
         sample_q = [
@@ -137,7 +131,13 @@ def get_questions():
     conn.close()
     return df
 
-# Anti-Cheating Scripts
+def get_authorized_students():
+    conn = get_db()
+    df = pd.read_sql_query("SELECT student_name FROM authorized_students", conn)
+    conn.close()
+    return df['student_name'].tolist()
+
+# Anti-Cheating JavaScript
 def inject_security_scripts():
     js = """
     <script>
@@ -188,7 +188,6 @@ if selected_portal == "⚙️ Admin Control Center":
                         st.error("Galat Username ya Password!")
         st.stop()
 
-    # Admin Dashboard Header
     st.sidebar.success(f"👑 Admin Logged In: `{ADMIN_USERNAME}`")
     if st.sidebar.button("Log Out Admin"):
         st.session_state.admin_authenticated = False
@@ -196,7 +195,12 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.title("⚙️ Teacher / Admin Control Center")
 
-    tab1, tab2, tab3 = st.tabs(["🖨️ Student Responses & Print", "⏱️ Exam Settings & Student Password", "📝 Question Bank"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🖨️ Student Responses & Print", 
+        "👥 Allowed Student Names (Excel/Manual)", 
+        "📝 Question Bank (Excel/Manual)",
+        "⏱️ Exam Settings & Password"
+    ])
 
     # --- TAB 1: RESPONSES & PRINTABLE A4 ---
     with tab1:
@@ -205,7 +209,7 @@ if selected_portal == "⚙️ Admin Control Center":
         conn = get_db()
         try:
             subs_df = pd.read_sql_query(
-                "SELECT student_name, email, score, total_questions, submitted_at FROM submissions ORDER BY id DESC", 
+                "SELECT student_name, score, total_questions, submitted_at FROM submissions ORDER BY id DESC", 
                 conn
             )
         except Exception:
@@ -224,21 +228,19 @@ if selected_portal == "⚙️ Admin Control Center":
             st.divider()
             st.write("### 2. View & Print Individual Student Answer Sheet")
             
-            student_display_list = [f"{r['student_name']} ({r['email']})" for _, r in subs_df.iterrows()]
-            selected_option = st.selectbox("Select Student to Print Report:", student_display_list)
+            student_display_list = subs_df['student_name'].tolist()
+            selected_student = st.selectbox("Select Student to Print Report:", student_display_list)
             
-            if selected_option:
-                selected_email = selected_option.split("(")[-1].replace(")", "").strip()
-                
+            if selected_student:
                 conn = get_db()
                 ans_df = pd.read_sql_query(
-                    "SELECT student_name, question_text, selected_option, correct_option, is_correct, recorded_at FROM student_responses WHERE email = ?", 
+                    "SELECT student_name, question_text, selected_option, correct_option, is_correct, recorded_at FROM student_responses WHERE student_name = ?", 
                     conn, 
-                    params=(selected_email,)
+                    params=(selected_student,)
                 )
                 student_summary = conn.execute(
-                    "SELECT student_name, score, total_questions, submitted_at FROM submissions WHERE email = ?", 
-                    (selected_email,)
+                    "SELECT student_name, score, total_questions, submitted_at FROM submissions WHERE student_name = ?", 
+                    (selected_student,)
                 ).fetchone()
                 conn.close()
                 
@@ -255,8 +257,8 @@ if selected_portal == "⚙️ Admin Control Center":
                             <td style="padding: 6px 0; text-align: right;"><strong>Date & Time:</strong> {student_summary['submitted_at']}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0;"><strong>Gmail ID:</strong> {selected_email}</td>
-                            <td style="padding: 6px 0; text-align: right;"><strong>Final Score:</strong> <span style="font-size: 18px; color: #0b6623; font-weight: bold;">{student_summary['score']} / {student_summary['total_questions']}</span></td>
+                            <td style="padding: 6px 0;"><strong>Final Score:</strong> <span style="font-size: 18px; color: #0b6623; font-weight: bold;">{student_summary['score']} / {student_summary['total_questions']}</span></td>
+                            <td style="padding: 6px 0; text-align: right;"><strong>Status:</strong> Completed & Verified</td>
                         </tr>
                     </table>
                     
@@ -300,37 +302,151 @@ if selected_portal == "⚙️ Admin Control Center":
                     <button onclick="window.print()" style="background-color: #007bff; color: white; border: none; padding: 10px 22px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">🖨️ Print / Save as PDF This Answer Sheet</button>
                 """, height=620, scrolling=True)
 
-    # --- TAB 2: TIMING & PASSWORD ---
+    # --- TAB 2: AUTHORIZED STUDENTS (EXCEL / MANUAL) ---
     with tab2:
-        st.subheader("Quiz Timing & Student Exam Access Password")
+        st.subheader("👥 Manage Authorized Student Names")
         
-        cur_title = get_setting("quiz_title", "Online Examination")
-        cur_duration = int(get_setting("duration_minutes", 15))
-        cur_active = (get_setting("is_active", "1") == "1")
-        cur_student_pwd = get_setting("student_exam_password", "EXAM123")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            new_title = st.text_input("Quiz Title:", value=cur_title)
-            new_duration = st.number_input("Duration (in Minutes):", min_value=1, max_value=300, value=cur_duration)
-        with col2:
-            new_student_pwd = st.text_input("Student Exam Password (Jo aap bachcho ko denge):", value=cur_student_pwd)
-            new_active = st.toggle("Exam Active for Students", value=cur_active)
+        # Excel Upload Option for Students
+        with st.expander("📂 Bulk Upload Students via Excel / CSV File", expanded=True):
+            st.markdown("Excel file me pehla column **`student_name`** ya **`Name`** hona chahiye.")
+            uploaded_students_file = st.file_uploader("Upload Excel (.xlsx) or CSV file of Students:", type=["xlsx", "csv"], key="stu_file")
             
-        if st.button("💾 Save Settings & Password", type="primary"):
-            update_setting("quiz_title", new_title)
-            update_setting("duration_minutes", new_duration)
-            update_setting("student_exam_password", new_student_pwd)
-            update_setting("is_active", "1" if new_active else "0")
-            st.success("Settings successfully save ho gayi hain!")
-            time.sleep(1)
-            st.rerun()
+            if uploaded_students_file is not None:
+                try:
+                    if uploaded_students_file.name.endswith(".csv"):
+                        stu_df = pd.read_csv(uploaded_students_file)
+                    else:
+                        stu_df = pd.read_excel(uploaded_students_file)
+                    
+                    # Column detection
+                    col_name = None
+                    for c in stu_df.columns:
+                        if c.strip().lower() in ["student_name", "name", "student name", "students"]:
+                            col_name = c
+                            break
+                    
+                    if col_name is None:
+                        col_name = stu_df.columns[0] # Take first column if not found
+                        
+                    st.write("File Preview:")
+                    st.dataframe(stu_df[[col_name]].head(5))
+                    
+                    if st.button("🚀 Import All Students from Excel"):
+                        conn = get_db()
+                        cur = conn.cursor()
+                        added_count = 0
+                        for name_val in stu_df[col_name].dropna().unique():
+                            clean_n = str(name_val).strip()
+                            if clean_n:
+                                try:
+                                    cur.execute("INSERT INTO authorized_students (student_name) VALUES (?)", (clean_n,))
+                                    added_count += 1
+                                except sqlite3.IntegrityError:
+                                    pass
+                        conn.commit()
+                        conn.close()
+                        st.success(f"Successfully {added_count} naye students list me add ho gaye!")
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"File read karne me error: {e}")
 
-    # --- TAB 3: QUESTIONS MANAGEMENT ---
-    with tab3:
-        st.subheader("Manage Question Bank")
+        # Manual Single Student Add
+        with st.expander("➕ Add Single Student Manually", expanded=False):
+            with st.form("manual_add_stu"):
+                new_student_name = st.text_input("Enter Student Full Name:")
+                if st.form_submit_button("Add Student"):
+                    clean_name = new_student_name.strip()
+                    if clean_name:
+                        try:
+                            conn = get_db()
+                            c = conn.cursor()
+                            c.execute("INSERT INTO authorized_students (student_name) VALUES (?)", (clean_name,))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"'{clean_name}' successfully add ho gaya!")
+                            time.sleep(1)
+                            st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.warning("Yeh student pehle se list me hai.")
+                    else:
+                        st.error("Kripya student ka naam enter karein.")
         
-        with st.expander("➕ Add New Question", expanded=False):
+        st.markdown("---")
+        st.write("### Current Allowed Students List")
+        auth_list = get_authorized_students()
+        st.write(f"Total Authorized Students: **{len(auth_list)}**")
+        
+        for name in auth_list:
+            col_n1, col_n2 = st.columns([4, 1])
+            col_n1.markdown(f"👤 **{name}**")
+            if col_n2.button("Remove", key=f"rem_{name}"):
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("DELETE FROM authorized_students WHERE student_name = ?", (name,))
+                conn.commit()
+                conn.close()
+                st.warning(f"'{name}' ko list se hata diya gaya.")
+                time.sleep(1)
+                st.rerun()
+
+    # --- TAB 3: QUESTIONS BANK (EXCEL / MANUAL) ---
+    with tab3:
+        st.subheader("📝 Manage Question Bank")
+        
+        # Excel Upload Option for Questions
+        with st.expander("📂 Bulk Upload Questions via Excel / CSV File", expanded=True):
+            st.markdown("""
+            **Excel format columns required:**
+            `question`, `option_a`, `option_b`, `option_c`, `option_d`, `correct_option`
+            """)
+            uploaded_q_file = st.file_uploader("Upload Excel (.xlsx) or CSV file of Questions:", type=["xlsx", "csv"], key="q_file")
+            
+            if uploaded_q_file is not None:
+                try:
+                    if uploaded_q_file.name.endswith(".csv"):
+                        q_file_df = pd.read_csv(uploaded_q_file)
+                    else:
+                        q_file_df = pd.read_excel(uploaded_q_file)
+                        
+                    # Standardize column headers
+                    q_file_df.columns = [str(c).strip().lower().replace(" ", "_") for c in q_file_df.columns]
+                    
+                    st.write("Preview of Uploaded Questions:")
+                    st.dataframe(q_file_df.head(3))
+                    
+                    req_cols = ["question", "option_a", "option_b", "option_c", "option_d", "correct_option"]
+                    if all(col in q_file_df.columns for col in req_cols):
+                        if st.button("🚀 Import All Questions to Exam"):
+                            conn = get_db()
+                            cur = conn.cursor()
+                            q_count = 0
+                            for _, r in q_file_df.iterrows():
+                                if pd.notna(r["question"]) and pd.notna(r["correct_option"]):
+                                    cur.execute('''
+                                        INSERT INTO questions (question, option_a, option_b, option_c, option_d, correct_option)
+                                        VALUES (?, ?, ?, ?, ?, ?)
+                                    ''', (
+                                        str(r["question"]).strip(),
+                                        str(r["option_a"]).strip(),
+                                        str(r["option_b"]).strip(),
+                                        str(r["option_c"]).strip(),
+                                        str(r["option_d"]).strip(),
+                                        str(r["correct_option"]).strip()
+                                    ))
+                                    q_count += 1
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Successfully {q_count} questions import ho gaye!")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.error("Excel file me sabhi columns hone zaroori hain: question, option_a, option_b, option_c, option_d, correct_option")
+                except Exception as e:
+                    st.error(f"Error reading file: {e}")
+
+        # Manual Single Question Add
+        with st.expander("➕ Add Single Question Manually", expanded=False):
             with st.form("add_q_form"):
                 q_text = st.text_area("Question Statement:")
                 c1, c2 = st.columns(2)
@@ -363,6 +479,7 @@ if selected_portal == "⚙️ Admin Control Center":
         q_df = pd.read_sql_query("SELECT * FROM questions", conn)
         conn.close()
         
+        st.write(f"Total Questions in Exam: **{len(q_df)}**")
         for idx, row in q_df.iterrows():
             st.markdown(f"**Q{idx+1}. {row['question']}**")
             st.markdown(f"- A: `{row['option_a']}` | B: `{row['option_b']}` | C: `{row['option_c']}` | D: `{row['option_d']}`")
@@ -379,66 +496,84 @@ if selected_portal == "⚙️ Admin Control Center":
                 st.rerun()
             st.divider()
 
+    # --- TAB 4: TIMING & PASSWORD ---
+    with tab4:
+        st.subheader("⏱️ Exam Timing & Student Exam Access Password")
+        
+        cur_title = get_setting("quiz_title", "Online Examination")
+        cur_duration = int(get_setting("duration_minutes", 15))
+        cur_active = (get_setting("is_active", "1") == "1")
+        cur_student_pwd = get_setting("student_exam_password", "EXAM123")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            new_title = st.text_input("Quiz Title:", value=cur_title)
+            new_duration = st.number_input("Duration (in Minutes):", min_value=1, max_value=300, value=cur_duration)
+        with col2:
+            new_student_pwd = st.text_input("Student Exam Password (Jo aap bachcho ko denge):", value=cur_student_pwd)
+            new_active = st.toggle("Exam Active for Students", value=cur_active)
+            
+        if st.button("💾 Save Settings & Password", type="primary"):
+            update_setting("quiz_title", new_title)
+            update_setting("duration_minutes", new_duration)
+            update_setting("student_exam_password", new_student_pwd)
+            update_setting("is_active", "1" if new_active else "0")
+            st.success("Settings successfully save ho gayi hain!")
+            time.sleep(1)
+            st.rerun()
+
 # ==========================================
-# 5. STUDENT EXAM PORTAL
+# 5. STUDENT EXAM PORTAL (Name & Password Based)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
         st.session_state.student_name = None
-    if "student_email" not in st.session_state:
-        st.session_state.student_email = None
     if "test_started" not in st.session_state:
         st.session_state.test_started = False
     if "start_timestamp" not in st.session_state:
         st.session_state.start_timestamp = None
 
     # Student Login Form
-    if not st.session_state.student_email:
+    if not st.session_state.student_name:
         st.title("🎓 Student Examination Login Portal")
-        st.markdown("Yeh platform strictly monitored hai. Apni details aur teacher dwara diya gaya **Exam Password** enter karein.")
+        st.markdown("Kripya apna **Naam** aur teacher dwara diya gaya **Exam Password** darj karein.")
         
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("student_login_form"):
-                in_name = st.text_input("Student Full Name:", placeholder="Shashank Verma")
-                in_email = st.text_input("Student Gmail ID (@gmail.com):", placeholder="student@gmail.com")
+                in_name = st.text_input("Student Name (Jo list me registered hai):", placeholder="Shashank Verma")
                 in_pwd = st.text_input("Exam Password (Given by Teacher):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
                 
                 if submit_login:
                     clean_name = in_name.strip()
-                    clean_email = in_email.strip().lower()
                     clean_pwd = in_pwd.strip()
                     
                     required_exam_pwd = get_setting("student_exam_password", "EXAM123")
+                    authorized_names = get_authorized_students()
                     
                     if not clean_name:
-                        st.error("Kripya apna poora naam darj karein.")
-                    elif not (clean_email.endswith("@gmail.com") and len(clean_email) > 10):
-                        st.error("Kripya ek valid Gmail ID darj karein (@gmail.com).")
+                        st.error("Kripya apna naam darj karein.")
                     elif clean_pwd != required_exam_pwd:
-                        st.error("Galat Exam Password! Kripya apne teacher dwara diya gaya password use karein.")
+                        st.error("Galat Exam Password! Teacher dwara diya gaya password daalein.")
+                    elif clean_name not in authorized_names:
+                        st.error(f"❌ '{clean_name}' naam authorized list me nahi hai! Kripya teacher se sampark karein.")
                     else:
                         st.session_state.student_name = clean_name
-                        st.session_state.student_email = clean_email
                         st.rerun()
         st.stop()
 
-    # Student Exam Dashboard
     student_name = st.session_state.student_name
-    student_email = st.session_state.student_email
 
     quiz_title = get_setting("quiz_title", "Online Examination")
     quiz_duration = int(get_setting("duration_minutes", 15))
     is_active = (get_setting("is_active", "1") == "1")
 
-    st.sidebar.markdown(f"**Student:** `{student_name}`")
-    st.sidebar.markdown(f"**Gmail:** `{student_email}`")
+    st.sidebar.markdown(f"**Student Candidate:** `{student_name}`")
 
     if st.sidebar.button("Log Out"):
         st.session_state.student_name = None
-        st.session_state.student_email = None
         st.session_state.test_started = False
         st.session_state.start_timestamp = None
         st.rerun()
@@ -453,7 +588,7 @@ else:
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute("SELECT * FROM submissions WHERE email = ?", (student_email,))
+        c.execute("SELECT * FROM submissions WHERE student_name = ?", (student_name,))
         submission = c.fetchone()
     except Exception:
         submission = None
@@ -473,7 +608,7 @@ else:
     if not st.session_state.test_started:
         st.markdown("### 📌 Important Guidelines:")
         st.markdown(f"""
-        - **Student Name:** `{student_name}`
+        - **Candidate Name:** `{student_name}`
         - **Total Duration:** `{quiz_duration} Minutes`
         - **Total Questions:** `{len(questions_df)}`
         - **Anti-Cheating Rules:**
@@ -500,7 +635,7 @@ else:
 
     mins, secs = divmod(int(remaining), 60)
     t1, t2 = st.columns([3, 1])
-    t1.markdown(f"Candidate: **{student_name}** (`{student_email}`)")
+    t1.markdown(f"Candidate: **{student_name}**")
     t2.metric("⏳ Time Left", f"{mins:02d}:{secs:02d}")
     st.divider()
 
@@ -532,11 +667,10 @@ else:
                     
                 c.execute('''
                     INSERT INTO student_responses 
-                    (student_name, email, question_id, question_text, selected_option, correct_option, is_correct, recorded_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (student_name, question_id, question_text, selected_option, correct_option, is_correct, recorded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     student_name,
-                    student_email,
                     q_id,
                     row['question'],
                     sel_opt if sel_opt else "Unattempted",
@@ -546,9 +680,9 @@ else:
                 ))
                 
             c.execute('''
-                INSERT INTO submissions (student_name, email, score, total_questions, submitted_at)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (student_name, student_email, score, len(questions_df), submission_time))
+                INSERT INTO submissions (student_name, score, total_questions, submitted_at)
+                VALUES (?, ?, ?, ?)
+            ''', (student_name, score, len(questions_df), submission_time))
             
             conn.commit()
             conn.close()
