@@ -5,487 +5,284 @@ import time
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# ==========================================
-# 1. PAGE SETUP & CONFIGURATION
-# ==========================================
 st.set_page_config(
-    page_title="Secure Quiz & Exam Portal",
-    page_icon="📝",
+    page_title="Proctored Quiz & Exam Portal",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Yahan apna Admin Gmail set karein
-ADMIN_EMAIL = "admin@gmail.com"
-DB_FILE = "exam_portal.db"
+DB_FILE = "quiz_master.db"
+ADMIN_EMAIL = "svsvermaverma@gmail.com"
 
+# --- Database Setup ---
+def init_db():
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    c = conn.cursor()
+    
+    # 1. Settings Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+    
+    # 2. Questions Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            option_a TEXT NOT NULL,
+            option_b TEXT NOT NULL,
+            option_c TEXT NOT NULL,
+            option_d TEXT NOT NULL,
+            correct_option TEXT NOT NULL
+        )
+    ''')
+    
+    # 3. Overall Submissions Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS submissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            score INTEGER NOT NULL,
+            total_questions INTEGER NOT NULL,
+            submitted_at TEXT NOT NULL
+        )
+    ''')
+    
+    # 4. Detailed Student Answers Table (With Timestamp for each Q&A)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS student_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            question_id INTEGER NOT NULL,
+            question_text TEXT NOT NULL,
+            selected_option TEXT,
+            correct_option TEXT NOT NULL,
+            is_correct INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL
+        )
+    ''')
+    
+    # Default initial data
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('duration_minutes', '15')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('quiz_title', 'Physics & Science Assessment')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('is_active', '1')")
+    
+    c.execute("SELECT COUNT(*) FROM questions")
+    if c.fetchone()[0] == 0:
+        sample_q = [
+            ("What is the SI unit of Electric Current?", "Volt", "Ampere", "Ohm", "Watt", "Ampere"),
+            ("Which sensor is used for gas detection?", "DHT11", "MQ2", "HC-SR04", "LDR", "MQ2"),
+            ("What is the acceleration due to gravity on Earth?", "9.8 m/s²", "8.9 m/s²", "10.8 m/s²", "7.8 m/s²", "9.8 m/s²")
+        ]
+        c.executemany('''
+            INSERT INTO questions (question, option_a, option_b, option_c, option_d, correct_option)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', sample_q)
+        
+    conn.commit()
+    conn.close()
 
-# ==========================================
-# 2. DATABASE MANAGEMENT (SQLite)
-# ==========================================
-def get_db_connection():
+init_db()
+
+# DB Helpers
+def get_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
-
-def init_db():
-    conn = get_db_connection()
-    c = conn.cursor()
-
-    # Settings table (Quiz timing & general config)
-    c.execute('''
-              CREATE TABLE IF NOT EXISTS settings
-              (
-                  key
-                  TEXT
-                  PRIMARY
-                  KEY,
-                  value
-                  TEXT
-              )
-              ''')
-
-    # Questions table
-    c.execute('''
-              CREATE TABLE IF NOT EXISTS questions
-              (
-                  id
-                  INTEGER
-                  PRIMARY
-                  KEY
-                  AUTOINCREMENT,
-                  question
-                  TEXT
-                  NOT
-                  NULL,
-                  option_a
-                  TEXT
-                  NOT
-                  NULL,
-                  option_b
-                  TEXT
-                  NOT
-                  NULL,
-                  option_c
-                  TEXT
-                  NOT
-                  NULL,
-                  option_d
-                  TEXT
-                  NOT
-                  NULL,
-                  correct_option
-                  TEXT
-                  NOT
-                  NULL
-              )
-              ''')
-
-    # Submissions & Activity table
-    c.execute('''
-              CREATE TABLE IF NOT EXISTS submissions
-              (
-                  id
-                  INTEGER
-                  PRIMARY
-                  KEY
-                  AUTOINCREMENT,
-                  email
-                  TEXT
-                  UNIQUE
-                  NOT
-                  NULL,
-                  score
-                  INTEGER
-                  NOT
-                  NULL,
-                  total_questions
-                  INTEGER
-                  NOT
-                  NULL,
-                  tab_switches
-                  INTEGER
-                  DEFAULT
-                  0,
-                  submitted_at
-                  TEXT
-                  NOT
-                  NULL
-              )
-              ''')
-
-    # Default settings agar pehle se na ho
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('duration_minutes', '15')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('quiz_title', 'Science & General Assessment')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('is_active', '1')")
-
-    # Dummy questions (sirf initial setup ke liye)
-    c.execute("SELECT COUNT(*) FROM questions")
-    if c.fetchone()[0] == 0:
-        sample_q = [
-            ("What is the SI unit of Force?", "Pascal", "Newton", "Joule", "Watt", "Newton"),
-            ("Which gas is most abundant in Earth's atmosphere?", "Oxygen", "Carbon Dioxide", "Nitrogen", "Hydrogen",
-             "Nitrogen"),
-            ("What is the chemical formula of water?", "H2O", "CO2", "NaCl", "O2", "H2O")
-        ]
-        c.executemany('''
-                      INSERT INTO questions (question, option_a, option_b, option_c, option_d, correct_option)
-                      VALUES (?, ?, ?, ?, ?, ?)
-                      ''', sample_q)
-
-    conn.commit()
-    conn.close()
-
-
-init_db()
-
-
-# Helper DB Functions
 def get_setting(key, default=""):
-    conn = get_db_connection()
+    conn = get_db()
     c = conn.cursor()
     c.execute("SELECT value FROM settings WHERE key = ?", (key,))
     row = c.fetchone()
     conn.close()
     return row['value'] if row else default
 
-
-def update_setting(key, value):
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
-    conn.commit()
-    conn.close()
-
-
-def get_all_questions():
-    conn = get_db_connection()
+def get_questions():
+    conn = get_db()
     df = pd.read_sql_query("SELECT * FROM questions", conn)
     conn.close()
     return df
 
-
-def get_submission(email):
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM submissions WHERE email = ?", (email.lower(),))
-    sub = c.fetchone()
-    conn.close()
-    return sub
-
-
-# ==========================================
-# 3. ANTI-CHEATING JAVASCRIPT INJECTION
-# ==========================================
-def inject_proctoring_script():
-    proctor_js = """
+# Anti-Cheating JavaScript
+def inject_security_scripts():
+    js = """
     <script>
-    // 1. Right click disable
-    document.addEventListener('contextmenu', event => event.preventDefault());
-
-    // 2. Copy/Cut/Paste block
-    document.addEventListener('copy', event => event.preventDefault());
-    document.addEventListener('cut', event => event.preventDefault());
-    document.addEventListener('paste', event => event.preventDefault());
-
-    // 3. Tab-switch / Window Blur Detection
-    window.addEventListener('blur', function () {
-        alert('⚠️ WARNING: Tab switch detect hua hai! Yeh activity Proctoring log me record ho rahi hai.');
+    window.addEventListener('blur', function() {
+        alert('⚠️ Warning: Window/Tab switch detect hua hai! Yeh activity log ho rahi hai.');
     });
-
-    // 4. Keyboard Shortcuts Block (Ctrl+C, Ctrl+V, F12, Ctrl+U)
-    document.onkeydown = function (e) {
-        if (e.keyCode == 123) { return false; } // F12
-        if (e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0))) { return false; }
-        if (e.ctrlKey && (e.keyCode == 'U'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0) || e.keyCode == 'V'.charCodeAt(0) || e.keyCode == 'A'.charCodeAt(0))) { return false; }
-    };
+    document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    document.addEventListener('copy', function(e) { e.preventDefault(); });
+    document.addEventListener('cut', function(e) { e.preventDefault(); });
+    document.addEventListener('paste', function(e) { e.preventDefault(); });
     </script>
     """
-    components.html(proctor_js, height=0, width=0)
+    components.html(js, height=0, width=0)
 
+# Session State
+if "logged_email" not in st.session_state:
+    st.session_state.logged_email = None
+if "test_started" not in st.session_state:
+    st.session_state.test_started = False
+if "start_timestamp" not in st.session_state:
+    st.session_state.start_timestamp = None
 
 # ==========================================
-# 4. AUTHENTICATION & SESSION STATE
+# 1. LOGIN SCREEN (Gmail Only)
 # ==========================================
-if "user_email" not in st.session_state:
-    st.session_state.user_email = None
-if "quiz_started" not in st.session_state:
-    st.session_state.quiz_started = False
-if "start_time" not in st.session_state:
-    st.session_state.start_time = None
-
-# --- Login Screen ---
-if not st.session_state.user_email:
-    st.title("🔒 Online Assessment & Examination System")
-    st.markdown("Yeh test strictly proctored hai. Test access karne ke liye valid **Gmail ID** enter karein.")
-
-    col_a, _ = st.columns([1, 1])
-    with col_a:
+if not st.session_state.logged_email:
+    st.title("🔒 Online Assessment & Exam Portal")
+    st.markdown("Yeh platform strictly monitored hai. Bina verified Gmail ID ke login nahi kiya ja sakta.")
+    
+    col1, _ = st.columns([1.2, 1])
+    with col1:
         with st.form("login_form"):
-            input_email = st.text_input("Enter your Gmail Address (@gmail.com):", placeholder="studentname@gmail.com")
-            submitted = st.form_submit_button("Proceed to Test Portal")
-
-            if submitted:
-                cleaned_email = input_email.strip().lower()
-                if cleaned_email.endswith("@gmail.com") and len(cleaned_email) > 10:
-                    st.session_state.user_email = cleaned_email
+            input_email = st.text_input("Apna Official Gmail ID Darj Karein:", placeholder="example@gmail.com")
+            submit_btn = st.form_submit_button("Proceed / Sign In", type="primary")
+            
+            if submit_btn:
+                email_clean = input_email.strip().lower()
+                if email_clean.endswith("@gmail.com") and len(email_clean) > 10:
+                    st.session_state.logged_email = email_clean
                     st.rerun()
                 else:
-                    st.error("Kripya ek valid Gmail ID darj karein jo '@gmail.com' par khatam hoti ho.")
+                    st.error("Kripya ek valid Gmail ID darj karein jo '@gmail.com' par end hoti ho.")
     st.stop()
 
-# User details post login
-current_user = st.session_state.user_email
+current_user = st.session_state.logged_email
 is_admin = (current_user == ADMIN_EMAIL.lower())
 
-# Sidebar Log Out
-st.sidebar.markdown(f"**Logged in as:** `{current_user}`")
+# Sidebar Details
+st.sidebar.markdown(f"**Logged In:** `{current_user}`")
 if is_admin:
-    st.sidebar.success("👑 Role: Administrator")
+    st.sidebar.success("👑 Admin Mode Active")
+    st.sidebar.info("Aap left sidebar ke '1_Admin_Panel' par jakar questions, timing aur printable reports manage kar sakte hain.")
 else:
-    st.sidebar.info("🎓 Role: Student Candidate")
+    st.sidebar.info("🎓 Student Examination Mode")
 
 if st.sidebar.button("Log Out"):
-    st.session_state.user_email = None
-    st.session_state.quiz_started = False
-    st.session_state.start_time = None
+    st.session_state.logged_email = None
+    st.session_state.test_started = False
+    st.session_state.start_timestamp = None
     st.rerun()
 
 # ==========================================
-# 5. ADMIN CONTROL PANEL
+# 2. STUDENT EXAM PORTAL
 # ==========================================
-if is_admin:
-    st.title("⚙️ Examination Admin Control Center")
-    admin_tab = st.sidebar.radio("Navigation Menu", [
-        "Dashboard & Submissions",
-        "Timing & Exam Settings",
-        "Question Bank Manager",
-        "Take Test Preview"
-    ])
-
-    # --- Tab 1: Dashboard & Results ---
-    if admin_tab == "Dashboard & Submissions":
-        st.subheader("📊 Student Results & Submission Logs")
-
-        conn = get_db_connection()
-        subs_df = pd.read_sql_query(
-            "SELECT email, score, total_questions, submitted_at FROM submissions ORDER BY id DESC", conn)
-        conn.close()
-
-        if not subs_df.empty:
-            subs_df["Percentage (%)"] = ((subs_df["score"] / subs_df["total_questions"]) * 100).round(2)
-
-            # Metrics
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total Submissions", len(subs_df))
-            m2.metric("Average Score (%)", f"{subs_df['Percentage (%)'].mean():.2f}%")
-            m3.metric("Highest Score", f"{subs_df['score'].max()}/{subs_df['total_questions'].iloc[0]}")
-
-            st.dataframe(subs_df, use_container_width=True)
-
-            csv = subs_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Results (CSV)", data=csv, file_name="exam_results.csv", mime="text/csv")
-        else:
-            st.info("Abhi tak kisi bhi student ne test submit nahi kiya hai.")
-        st.stop()
-
-    # --- Tab 2: Timing & General Settings ---
-    elif admin_tab == "Timing & Exam Settings":
-        st.subheader("⏱️ Manage Exam Duration & Status")
-
-        cur_duration = int(get_setting("duration_minutes", 15))
-        cur_title = get_setting("quiz_title", "Online Examination")
-        cur_status = get_setting("is_active", "1") == "1"
-
-        with st.form("settings_form"):
-            new_title = st.text_input("Exam Title:", value=cur_title)
-            new_duration = st.number_input("Test Duration (in Minutes):", min_value=1, max_value=240,
-                                           value=cur_duration)
-            new_status = st.checkbox("Exam Active / Live (Students can attempt)", value=cur_status)
-
-            save_btn = st.form_submit_button("Update Exam Settings")
-            if save_btn:
-                update_setting("quiz_title", new_title)
-                update_setting("duration_minutes", new_duration)
-                update_setting("is_active", "1" if new_status else "0")
-                st.success("Exam settings successfully update ho gayi hain!")
-                time.sleep(1)
-                st.rerun()
-        st.stop()
-
-    # --- Tab 3: Question Bank Manager ---
-    elif admin_tab == "Question Bank Manager":
-        st.subheader("📝 Question Bank Management")
-
-        questions_df = get_all_questions()
-        st.write(f"Total Questions: **{len(questions_df)}**")
-
-        with st.expander("➕ Add New Question", expanded=False):
-            with st.form("add_question_form"):
-                q_text = st.text_area("Question Statement:")
-                col1, col2 = st.columns(2)
-                opt_a = col1.text_input("Option A:")
-                opt_b = col2.text_input("Option B:")
-                opt_c = col1.text_input("Option C:")
-                opt_d = col2.text_input("Option D:")
-
-                correct_opt = st.selectbox("Correct Option:", ["Option A", "Option B", "Option C", "Option D"])
-
-                if st.form_submit_button("Save Question to Bank"):
-                    mapping = {"Option A": opt_a, "Option B": opt_b, "Option C": opt_c, "Option D": opt_d}
-                    if q_text and opt_a and opt_b and opt_c and opt_d:
-                        conn = get_db_connection()
-                        c = conn.cursor()
-                        c.execute('''
-                                  INSERT INTO questions (question, option_a, option_b, option_c, option_d, correct_option)
-                                  VALUES (?, ?, ?, ?, ?, ?)
-                                  ''', (q_text, opt_a, opt_b, opt_c, opt_d, mapping[correct_opt]))
-                        conn.commit()
-                        conn.close()
-                        st.success("Question successfully add ho gaya!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Kripya sabhi fields dhyanpurvak bharein.")
-
-        if not questions_df.empty:
-            st.markdown("### Existing Questions")
-            for idx, row in questions_df.iterrows():
-                with st.container():
-                    st.markdown(f"**Q{idx + 1}. {row['question']}**")
-                    st.markdown(
-                        f"- A: {row['option_a']} | B: {row['option_b']} | C: {row['option_c']} | D: {row['option_d']}")
-                    st.markdown(f"✅ **Correct Answer:** `{row['correct_option']}`")
-
-                    if st.button(f"Delete Q{idx + 1}", key=f"del_{row['id']}"):
-                        conn = get_db_connection()
-                        c = conn.cursor()
-                        c.execute("DELETE FROM questions WHERE id = ?", (row['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.warning("Question delete kar diya gaya hai.")
-                        time.sleep(1)
-                        st.rerun()
-                    st.divider()
-        st.stop()
-
-# ==========================================
-# 6. STUDENT EXAM INTERFACE & PROCTORING
-# ==========================================
-quiz_title = get_setting("quiz_title", "Online Examination")
+quiz_title = get_setting("quiz_title", "Science Assessment")
 quiz_duration = int(get_setting("duration_minutes", 15))
 is_active = (get_setting("is_active", "1") == "1")
 
-st.title(f"📖 {quiz_title}")
+st.title(f"📝 {quiz_title}")
 
-# Check 1: Is Exam Active?
 if not is_active:
-    st.warning("🛑 Yeh exam abhi active nahi hai. Kripya apne administrator se sampark karein.")
+    st.error("🛑 Yeh quiz abhi inactive hai. Kripya teacher/admin ke start karne ka wait karein.")
     st.stop()
 
-# Check 2: Has student already submitted?
-existing_sub = get_submission(current_user)
-if existing_sub:
-    st.success("✅ Aapne yeh test pehle hi successfully submit kar diya hai.")
-    st.metric("Your Score", f"{existing_sub['score']} / {existing_sub['total_questions']}")
-    st.info(f"Submitted on: {existing_sub['submitted_at']}")
+# Check if already submitted
+conn = get_db()
+c = conn.cursor()
+c.execute("SELECT * FROM submissions WHERE email = ?", (current_user,))
+submission = c.fetchone()
+conn.close()
+
+if submission:
+    st.success("✅ Aapka response successfully save ho chuka hai!")
+    st.metric("Total Score", f"{submission['score']} / {submission['total_questions']}")
+    st.info(f"Submitted Date & Time: {submission['submitted_at']}")
     st.stop()
 
-# Check 3: Any questions available?
-questions_df = get_all_questions()
+questions_df = get_questions()
 if questions_df.empty:
-    st.info("Abhi exam me koi question upload nahi kiya gaya hai. Kripya wait karein.")
+    st.info("Filhal koi question available nahi hai.")
     st.stop()
 
-# --- Quiz Start Gate ---
-if not st.session_state.quiz_started:
-    st.markdown("### 📌 Instructions & Anti-Cheating Guidelines:")
+if not st.session_state.test_started:
+    st.markdown("### 📌 Important Guidelines:")
     st.markdown(f"""
     - **Total Duration:** `{quiz_duration} Minutes`
     - **Total Questions:** `{len(questions_df)}`
-    - **Security Rules:**
-        1. Dusri tab ya app switch karne par warning prompt aayega aur admin log me record hoga.
-        2. Copy-paste aur Right click block rahenge.
-        3. Timer continuously chalega, page refresh karne par bhi time reset nahi hoga.
+    - **Rules:** Tab change na karein, Right-click block rahega. Har question ka answer time ke sath record hoga.
     """)
     if st.button("🚀 Start Exam Now", type="primary"):
-        st.session_state.quiz_started = True
-        st.session_state.start_time = time.time()
+        st.session_state.test_started = True
+        st.session_state.start_timestamp = time.time()
         st.rerun()
     st.stop()
 
-# --- Live Anti-Cheat JS Inject ---
-inject_proctoring_script()
+# Anti-Cheating Script Injection
+inject_security_scripts()
 
-# --- Live Countdown Timer ---
-elapsed = time.time() - st.session_state.start_time
-total_seconds = quiz_duration * 60
-remaining_seconds = total_seconds - elapsed
+# Timer Calculation
+elapsed = time.time() - st.session_state.start_timestamp
+total_sec = quiz_duration * 60
+remaining = total_sec - elapsed
 
-if remaining_seconds <= 0:
-    st.error("⏰ Samay samapt ho gaya hai! Exam auto-submit ho gaya hai.")
-    # Auto-submit 0 score on timeout if not already submitted
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute('''
-              INSERT
-              OR IGNORE INTO submissions (email, score, total_questions, submitted_at)
-        VALUES (?, ?, ?, ?)
-              ''', (current_user, 0, len(questions_df), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    conn.commit()
-    conn.close()
+if remaining <= 0:
+    st.error("⏰ Time Up! Test automatically close ho gaya hai.")
     st.stop()
 
-# Timer Display Header
-mins, secs = divmod(int(remaining_seconds), 60)
-timer_col1, timer_col2 = st.columns([3, 1])
-timer_col1.markdown(f"Candidate: **{current_user}**")
-timer_col2.metric("⏳ Time Left", f"{mins:02d}:{secs:02d}")
-
+mins, secs = divmod(int(remaining), 60)
+t1, t2 = st.columns([3, 1])
+t1.markdown(f"Candidate: **{current_user}**")
+t2.metric("⏳ Time Left", f"{mins:02d}:{secs:02d}")
 st.divider()
 
-# --- Quiz Form ---
-with st.form("exam_submission_form"):
-    student_answers = {}
-
+# Exam Form
+with st.form("exam_form"):
+    answers = {}
     for idx, row in questions_df.iterrows():
-        st.markdown(f"**Q{idx + 1}. {row['question']}**")
-        options = [row['option_a'], row['option_b'], row['option_c'], row['option_d']]
-        student_answers[row['id']] = st.radio(
-            "Select your option:",
-            options,
-            key=f"opt_{row['id']}",
-            index=None
-        )
+        st.markdown(f"**Q{idx+1}. {row['question']}**")
+        opts = [row['option_a'], row['option_b'], row['option_c'], row['option_d']]
+        answers[row['id']] = st.radio("Choose Option:", opts, key=f"q_{row['id']}", index=None)
         st.markdown("---")
-
-    final_submit = st.form_submit_button("Submit Exam", type="primary")
-
-    if final_submit:
-        # Score calculation
-        calculated_score = 0
+        
+    submitted = st.form_submit_button("Submit Final Answers", type="primary")
+    
+    if submitted:
+        submission_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        score = 0
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Save individual detailed answer logs
         for _, row in questions_df.iterrows():
             q_id = row['id']
-            if student_answers.get(q_id) == row['correct_option']:
-                calculated_score += 1
-
-        # Save to SQLite Database
-        conn = get_db_connection()
-        c = conn.cursor()
+            sel_opt = answers.get(q_id)
+            correct_opt = row['correct_option']
+            is_correct = 1 if (sel_opt == correct_opt) else 0
+            if is_correct:
+                score += 1
+                
+            c.execute('''
+                INSERT INTO student_responses 
+                (email, question_id, question_text, selected_option, correct_option, is_correct, recorded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                current_user,
+                q_id,
+                row['question'],
+                sel_opt if sel_opt else "Unattempted",
+                correct_opt,
+                is_correct,
+                submission_time
+            ))
+            
+        # Save overall submission
         c.execute('''
-                  INSERT INTO submissions (email, score, total_questions, submitted_at)
-                  VALUES (?, ?, ?, ?)
-                  ''', (
-                      current_user,
-                      calculated_score,
-                      len(questions_df),
-                      datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                  ))
+            INSERT INTO submissions (email, score, total_questions, submitted_at)
+            VALUES (?, ?, ?, ?)
+        ''', (current_user, score, len(questions_df), submission_time))
+        
         conn.commit()
         conn.close()
-
+        
         st.balloons()
-        st.success(f"🎉 Exam submit ho gaya hai! Aapka Score: {calculated_score} / {len(questions_df)}")
+        st.success(f"🎉 Exam Successfully Submitted! Score: {score}/{len(questions_df)}")
         time.sleep(2)
         st.rerun()
