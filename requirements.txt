@@ -1,0 +1,8 @@
+streamlit
+pandas
+openpyxl
+pypdfium2
+numpy
+fpdf2
+streamlit>=1.35.0
+pandas>=2.0.0
