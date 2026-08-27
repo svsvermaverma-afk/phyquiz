@@ -1,982 +1,647 @@
-import streamlit as st
+import base64
+import os
 import sqlite3
+from datetime import datetime
 import pandas as pd
-import time
-import io
-from datetime import datetime, timedelta, timezone
-import streamlit.components.v1 as components
+import streamlit as st
 
-# ==========================================
-# 1. PAGE CONFIGURATION
-# ==========================================
+# ----------------- PAGE CONFIG -----------------
 st.set_page_config(
-    page_title="Proctored Master Quiz Portal",
-    page_icon="🎓",
+    page_title="Physics Lab SOP Portal",
+    page_icon="🔬",
     layout="wide",
-    initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_v9.db"
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "Admin@2026"
+DB_FILE = "physics_lab_sop_v3.db"
+UPLOAD_DIR = "uploaded_sop_docs"
 
-# Indian Standard Time (IST: UTC + 5:30)
-IST = timezone(timedelta(hours=5, minutes=30))
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
 
-def get_ist_now():
-    return datetime.now(timezone.utc).astimezone(IST)
+# ----------------- DATA SEED -----------------
+DEFAULT_STUDENTS = [
+    ("Rahul Sharma", "SR1001", "Class 11-A"),
+    ("Priya Verma", "SR1002", "Class 11-A"),
+    ("Aman Singh", "SR1003", "Class 12-B"),
+    ("Sneha Patel", "SR1004", "Class 12-B"),
+]
 
-# ==========================================
-# 2. BULLETPROOF DATABASE MANAGEMENT
-# ==========================================
-def get_db():
-    conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.row_factory = sqlite3.Row
-    return conn
+DEFAULT_SOPS = [
+    # 1. Lab Access, Roles & General Discipline
+    (
+        1,
+        "1. Lab Access, Roles & General Discipline",
+        "Supervised Entry",
+        "Guidelines",
+        (
+            "Students must enter the laboratory only under the supervision of the"
+            " Physics Teacher or Lab Assistant. Unauthorized operation of equipment is"
+            " strictly prohibited."
+        ),
+        "Active",
+        "Lab Entrance Desk",
+        1,
+        "",
+    ),
+    (
+        2,
+        "1. Lab Access, Roles & General Discipline",
+        "Dress Code & Safety Attire",
+        "Safety Rule",
+        (
+            "Closed-toe shoes are mandatory. Secure loose clothing, roll up long"
+            " sleeves, and tie back long hair. Keep aisles clear by storing school bags"
+            " on designated racks."
+        ),
+        "Active",
+        "Notice Board",
+        1,
+        "",
+    ),
+    (
+        3,
+        "1. Lab Access, Roles & General Discipline",
+        "Workplace Boundaries",
+        "Floor Protocol",
+        (
+            "Maintain clear segregation between general workstations, the optical"
+            " darkroom section, and the apparatus storage area. Eating and drinking"
+            " inside the lab are strictly forbidden."
+        ),
+        "Active",
+        "Workstation Benches",
+        1,
+        "",
+    ),
+    # 2. Pre-Lab Briefing, Alignment & Setup
+    (
+        4,
+        "2. Pre-Lab Briefing, Alignment & Setup",
+        "Pre-Experiment Briefing",
+        "Instructional Guide",
+        (
+            "Attend the instructional overview regarding experiment theory, circuit"
+            " layout, and safety considerations before handling apparatus."
+        ),
+        "Active",
+        "Briefing Zone",
+        1,
+        "",
+    ),
+    (
+        5,
+        "2. Pre-Lab Briefing, Alignment & Setup",
+        "Instrument Calibration",
+        "Calibration Check",
+        (
+            "Inspect measuring devices (Vernier Callipers, Screw Gauges, Spherometers,"
+            " and Multimeters) for zero error and calibration before recording values."
+        ),
+        "Active",
+        "Measurement Desk",
+        1,
+        "",
+    ),
+    (
+        6,
+        "2. Pre-Lab Briefing, Alignment & Setup",
+        "Optical Components Handling",
+        "Handling Rule",
+        (
+            "Hold prisms, lenses, and mirrors only by their frosted edges to avoid"
+            " fingerprints; clean them using optical lens paper."
+        ),
+        "Active",
+        "Optics Bench",
+        1,
+        "",
+    ),
+    (
+        7,
+        "2. Pre-Lab Briefing, Alignment & Setup",
+        "Mechanical Elements Handling",
+        "Handling Rule",
+        (
+            "Handle slotted weights, pendulums, and pulleys carefully; do not exceed"
+            " rated elastic limits or drop weights on benches."
+        ),
+        "Active",
+        "Mechanics Table",
+        1,
+        "",
+    ),
+    (
+        8,
+        "2. Pre-Lab Briefing, Alignment & Setup",
+        "Optical Sources & Laser Safety",
+        "Safety Standard",
+        (
+            "Never look directly into laser beams (diffraction/interference setups) or"
+            " point them at other individuals."
+        ),
+        "Active",
+        "Darkroom Area",
+        1,
+        "",
+    ),
+    # 3. Electrical & Thermal Safety Execution
+    (
+        9,
+        "3. Electrical & Thermal Safety Execution",
+        "Mandatory Circuit Inspection",
+        "Verification SOP",
+        (
+            "All circuit connections must be verified and approved by the instructor"
+            " before switching on the power supply."
+        ),
+        "Active",
+        "Electrical Benches",
+        1,
+        "",
+    ),
+    (
+        10,
+        "3. Electrical & Thermal Safety Execution",
+        "Power-Down Protocol",
+        "Safety Standard",
+        (
+            "Always turn off the power source and disconnect supply lines before"
+            " altering components, replacing resistors, or modifying connections."
+        ),
+        "Active",
+        "Circuit Workstations",
+        1,
+        "",
+    ),
+    (
+        11,
+        "3. Electrical & Thermal Safety Execution",
+        "Capacitor & High-Voltage Precautions",
+        "Hazard Protocol",
+        (
+            "Safely discharge high-value capacitors prior to handling. Maintain clearance"
+            " from high-voltage terminals on induction coils or step-up transformers."
+        ),
+        "Active",
+        "High Voltage Setup",
+        1,
+        "",
+    ),
+    (
+        12,
+        "3. Electrical & Thermal Safety Execution",
+        "Thermal Procedures",
+        "Hazard Protocol",
+        (
+            "Never leave Bunsen burners or heating elements unattended during"
+            " calorimetry experiments. Use tongs or heat-resistant gloves to handle"
+            " heated metal cylinders."
+        ),
+        "Active",
+        "Calorimetry Station",
+        1,
+        "",
+    ),
+    # 4. Hazard Management & Emergency Response
+    (
+        13,
+        "4. Hazard Management & Emergency Response",
+        "Emergency Power Cut-Off",
+        "Emergency SOP",
+        (
+            "In case of sparking, burning smells, or short circuits, instantly shut down"
+            " the main power switch or trip the MCB."
+        ),
+        "Active",
+        "Main MCB Panel",
+        1,
+        "",
+    ),
+    (
+        14,
+        "4. Hazard Management & Emergency Response",
+        "Spill & Glass Breakage Protocol",
+        "Accident Response",
+        (
+            "If a thermometer or barometer breaks, report the mercury spill immediately"
+            " for proper containment and maximize room ventilation."
+        ),
+        "Active",
+        "Hazard Waste Box",
+        1,
+        "",
+    ),
+    (
+        15,
+        "4. Hazard Management & Emergency Response",
+        "First Aid & Safety Readiness",
+        "Safety Standard",
+        (
+            "Ensure First Aid kits, CO2/Class C fire extinguishers, and sand buckets"
+            " remain unobstructed. Report all minor burns, cuts, or shocks immediately to"
+            " the instructor."
+        ),
+        "Active",
+        "Safety Station 1",
+        1,
+        "",
+    ),
+    # 5. Verification, Inventory & Handover
+    (
+        16,
+        "5. Verification, Inventory & Handover",
+        "Data Verification",
+        "Academic Protocol",
+        (
+            "Complete the required observation sets, calculations, and graphs, and"
+            " obtain teacher verification before dismantling apparatus."
+        ),
+        "Active",
+        "Instructor Signature Desk",
+        1,
+        "",
+    ),
+    (
+        17,
+        "5. Verification, Inventory & Handover",
+        "Equipment Return & Cleanup",
+        "Inventory SOP",
+        (
+            "Clean and return all instruments, optical benches, and components to their"
+            " designated storage positions in proper working order."
+        ),
+        "Active",
+        "Return Counter",
+        1,
+        "",
+    ),
+    (
+        18,
+        "5. Verification, Inventory & Handover",
+        "Defect Reporting & Logbooks",
+        "Maintenance Log",
+        (
+            "Document equipment issues in the lab logbook and mark malfunctioning units"
+            " with an 'Out of Order' tag for prompt maintenance."
+        ),
+        "Active",
+        "Logbook Register",
+        1,
+        "",
+    ),
+]
+
+
+# ----------------- DATABASE UTILITIES -----------------
+def get_db_connection():
+    return sqlite3.connect(DB_FILE)
+
 
 def init_db():
-    conn = get_db()
+    conn = get_db_connection()
     c = conn.cursor()
-    
-    # 1. Master Student Directory Table (Permanent Student Records)
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS master_students (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sr_no TEXT UNIQUE NOT NULL,
-            student_name TEXT NOT NULL,
-            class_name TEXT NOT NULL,
-            password TEXT NOT NULL
-        )
-    ''')
-    
-    # 2. Quizzes Table (Class Targeted)
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS quizzes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quiz_title TEXT UNIQUE NOT NULL,
-            target_class TEXT NOT NULL,
-            duration_minutes INTEGER DEFAULT 15,
-            start_datetime TEXT NOT NULL,
-            end_datetime TEXT NOT NULL,
-            is_active INTEGER DEFAULT 1
-        )
-    ''')
-    
-    # 3. Questions Table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS questions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quiz_id INTEGER NOT NULL,
-            question TEXT NOT NULL,
-            option_a TEXT NOT NULL,
-            option_b TEXT NOT NULL,
-            option_c TEXT NOT NULL,
-            option_d TEXT NOT NULL,
-            correct_option TEXT NOT NULL
-        )
-    ''')
-    
-    # 4. Overall Submissions Table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS submissions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quiz_id INTEGER NOT NULL,
-            sr_no TEXT NOT NULL,
-            student_name TEXT NOT NULL,
-            class_name TEXT NOT NULL,
-            score INTEGER NOT NULL,
-            total_questions INTEGER NOT NULL,
-            tab_switches INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'Completed',
-            submitted_at TEXT NOT NULL,
-            UNIQUE(quiz_id, sr_no)
-        )
-    ''')
-    
-    # 5. Question-Wise Responses Table
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS student_responses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quiz_id INTEGER NOT NULL,
-            sr_no TEXT NOT NULL,
-            student_name TEXT NOT NULL,
-            question_id INTEGER NOT NULL,
-            question_text TEXT NOT NULL,
-            selected_option TEXT,
-            correct_option TEXT NOT NULL,
-            is_correct INTEGER NOT NULL,
-            recorded_at TEXT NOT NULL
-        )
-    ''')
-    
-    # Demo Data Initialization
-    now_time = get_ist_now() - timedelta(hours=1)
-    default_start = now_time.strftime("%Y-%m-%d %H:%M")
-    default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
-    
-    # Demo Students
-    c.execute('''
-        INSERT OR IGNORE INTO master_students (sr_no, student_name, class_name, password)
-        VALUES 
-        ('101', 'Aman Verma', 'Class 11', '101'),
-        ('102', 'Rohan Sharma', 'Class 11', '102'),
-        ('103', 'Shashank Verma', 'Class 11', '103'),
-        ('201', 'Abhishek Gupta', 'Class 12', '201'),
-        ('202', 'Priya Singh', 'Class 12', '202')
-    ''')
-    
-    # Demo Quizzes
-    c.execute('''
-        INSERT OR IGNORE INTO quizzes (quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', ("Class 11 - Physics Periodic Test", "Class 11", 15, default_start, default_end, 1))
-    
-    c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Periodic Test",))
-    row1 = c.fetchone()
-    if row1:
-        q_id_1 = row1[0]
-        c.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (q_id_1,))
-        if c.fetchone()[0] == 0:
-            c.executemany('''
-                INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', [
-                (q_id_1, "What is the SI unit of Force?", "Pascal", "Newton", "Joule", "Watt", "Newton"),
-                (q_id_1, "Dimensional formula of Work is?", "[MLT-2]", "[ML2T-2]", "[MLT-1]", "[ML2T-1]", "[ML2T-2]")
-            ])
 
-    c.execute('''
-        INSERT OR IGNORE INTO quizzes (quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', ("Class 12 - Physics Board Mock", "Class 12", 20, default_start, default_end, 1))
-    
-    c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 12 - Physics Board Mock",))
-    row2 = c.fetchone()
-    if row2:
-        q_id_2 = row2[0]
-        c.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (q_id_2,))
-        if c.fetchone()[0] == 0:
-            c.executemany('''
-                INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', [
-                (q_id_2, "SI unit of Electric Charge is?", "Coulomb", "Ampere", "Volt", "Ohm", "Coulomb"),
-                (q_id_2, "Permittivity of free space (epsilon_0) value is?", "8.85 x 10^-12", "9 x 10^9", "1.6 x 10^-19", "3 x 10^8", "8.85 x 10^-12")
-            ])
+    # SOPs Table
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS lab_sops (
+            sop_id INTEGER PRIMARY KEY,
+            section TEXT,
+            title TEXT,
+            format TEXT,
+            sop_guideline TEXT,
+            status TEXT,
+            remarks TEXT,
+            is_published INTEGER,
+            file_path TEXT
+        )"""
+    )
+
+    # Students Roster Table
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_name TEXT UNIQUE,
+            sr_number TEXT UNIQUE,
+            class_section TEXT
+        )"""
+    )
+
+    c.execute("SELECT COUNT(*) FROM lab_sops")
+    if c.fetchone()[0] == 0:
+        c.executemany(
+            """INSERT INTO lab_sops 
+            (sop_id, section, title, format, sop_guideline, status, remarks, is_published, file_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            DEFAULT_SOPS,
+        )
+
+    c.execute("SELECT COUNT(*) FROM students")
+    if c.fetchone()[0] == 0:
+        c.executemany(
+            """INSERT INTO students (student_name, sr_number, class_section) VALUES (?, ?, ?)""",
+            DEFAULT_STUDENTS,
+        )
 
     conn.commit()
     conn.close()
 
+
 init_db()
 
-# DB Helpers
-def get_all_quizzes():
-    conn = get_db()
-    df = pd.read_sql_query("SELECT * FROM quizzes", conn)
+
+def authenticate_student(name, sr_no):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute(
+        "SELECT * FROM students WHERE LOWER(TRIM(student_name)) = LOWER(TRIM(?)) AND TRIM(sr_number) = TRIM(?)",
+        (name, sr_no),
+    )
+    res = c.fetchone()
+    conn.close()
+    return res
+
+
+def load_sops(published_only=False):
+    conn = get_db_connection()
+    query = (
+        "SELECT * FROM lab_sops WHERE is_published = 1 ORDER BY sop_id ASC"
+        if published_only
+        else "SELECT * FROM lab_sops ORDER BY sop_id ASC"
+    )
+    df = pd.read_sql_query(query, conn)
     conn.close()
     return df
 
-def get_questions_by_quiz(quiz_id):
-    conn = get_db()
-    df = pd.read_sql_query("SELECT * FROM questions WHERE quiz_id = ?", conn, params=(quiz_id,))
+
+def update_sop(sop_id, title, guideline, is_published, status, remarks, file_path):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute(
+        """UPDATE lab_sops 
+           SET title = ?, sop_guideline = ?, is_published = ?, status = ?, remarks = ?, file_path = ?
+           WHERE sop_id = ?""",
+        (title, guideline, is_published, status, remarks, file_path, sop_id),
+    )
+    conn.commit()
     conn.close()
-    return df
 
-def get_distinct_classes():
-    conn = get_db()
-    df = pd.read_sql_query("SELECT DISTINCT class_name FROM master_students", conn)
-    conn.close()
-    classes = [str(c).strip() for c in df['class_name'].tolist() if str(c).strip()]
-    return classes if classes else ["Class 11", "Class 12"]
 
-# Live Real-time Timer & Anti-Cheating Script
-def inject_live_timer_and_security(remaining_seconds, quiz_id, sr_no):
-    timer_js = f"""
-    <div id="sticky-timer-box" style="
-        position: fixed; 
-        top: 60px; 
-        right: 25px; 
-        background: #ff4b4b; 
-        color: #ffffff; 
-        padding: 12px 24px; 
-        border-radius: 10px; 
-        font-family: monospace; 
-        font-size: 22px; 
-        font-weight: bold; 
-        z-index: 999999;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-        border: 2px solid white;
-    ">
-        ⏳ <span id="timer-display">Loading...</span> | ⚠️ Switches: <span id="switch-count">0</span>
-    </div>
+def show_pdf_viewer(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            base64_pdf = base64.b64encode(f.read()).decode("utf-8")
+        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf" style="border-radius: 8px; border: 1px solid #ddd;"></iframe>'
+        st.markdown(pdf_display, unsafe_allow_html=True)
+    else:
+        st.warning("Attached document not found on server.")
 
-    <script>
-    let timeLeft = {int(remaining_seconds)};
-    let display = document.getElementById('timer-display');
-    let switchCountElem = document.getElementById('switch-count');
-    let tabSwitches = sessionStorage.getItem('tab_switches_{quiz_id}_{sr_no}') || 0;
-    switchCountElem.innerHTML = tabSwitches;
 
-    function updateTimer() {{
-        if (timeLeft <= 0) {{
-            display.innerHTML = "TIME UP!";
-            let buttons = window.parent.document.querySelectorAll('button');
-            buttons.forEach(btn => {{
-                if (btn.innerText.includes("Submit Final Answers")) {{
-                    btn.click();
-                }}
-            }});
-            return;
-        }}
+# ----------------- SESSION STATE -----------------
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "user_role" not in st.session_state:
+    st.session_state["user_role"] = None
+if "user_info" not in st.session_state:
+    st.session_state["user_info"] = None
 
-        let mins = Math.floor(timeLeft / 60);
-        let secs = timeLeft % 60;
-        display.innerHTML = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
-        timeLeft--;
-    }}
+# ----------------- AUTHENTICATION FLOW -----------------
+st.sidebar.title("🔐 Physics Lab Access")
 
-    updateTimer();
-    setInterval(updateTimer, 1000);
+if not st.session_state["logged_in"]:
+    role_choice = st.sidebar.radio("Select Login Type:", ["Student Login", "Admin Login"])
 
-    // Tab Switch Detection & Warning
-    window.addEventListener('blur', function() {{
-        tabSwitches++;
-        sessionStorage.setItem('tab_switches_{quiz_id}_{sr_no}', tabSwitches);
-        switchCountElem.innerHTML = tabSwitches;
-        
-        alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detect hua hai! Bar-bar tab badalne par test auto-submit ho jayega.');
-        
-        if (tabSwitches >= 3) {{
-            alert('❌ Maximum limit reach ho gayi hai. Test auto-submit ho raha hai.');
-            let buttons = window.parent.document.querySelectorAll('button');
-            buttons.forEach(btn => {{
-                if (btn.innerText.includes("Submit Final Answers")) {{
-                    btn.click();
-                }}
-            }});
-        }}
-    }});
+    if role_choice == "Student Login":
+        st.title("🔬 Student Portal Authentication")
+        st.caption("Enter your registered Student Name and SR Number (Password) to proceed.")
 
-    document.addEventListener('contextmenu', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('copy', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('cut', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('paste', function(e) {{ e.preventDefault(); }});
-    </script>
-    """
-    components.html(timer_js, height=80)
+        with st.form("student_login_form"):
+            in_name = st.text_input("Username (Student Full Name):", placeholder="e.g. Rahul Sharma")
+            in_sr = st.text_input("Password (SR Number):", type="password", placeholder="e.g. SR1001")
+            submit_student = st.form_submit_button("Sign In to Portal", type="primary")
 
-# ==========================================
-# 3. SIDEBAR NAVIGATION
-# ==========================================
-st.sidebar.title("🧭 Navigation")
-selected_portal = st.sidebar.radio("Select Access Portal:", ["🎓 Student Exam Portal", "⚙️ Admin Control Center"])
-st.sidebar.divider()
+            if submit_student:
+                record = authenticate_student(in_name, in_sr)
+                if record:
+                    st.session_state["logged_in"] = True
+                    st.session_state["user_role"] = "Student"
+                    st.session_state["user_info"] = {"name": record[1], "sr": record[2], "class": record[3]}
+                    st.rerun()
+                else:
+                    st.error("Invalid Student Name or SR Number. Contact your Physics Teacher if not registered.")
 
-# ==========================================
-# 4. ADMIN CONTROL PANEL
-# ==========================================
-if selected_portal == "⚙️ Admin Control Center":
-    if "admin_authenticated" not in st.session_state:
-        st.session_state.admin_authenticated = False
+        st.info("💡 Default Demo Credentials:\n- **Username:** Rahul Sharma | **Password:** SR1001\n- **Username:** Priya Verma | **Password:** SR1002")
 
-    # Secure Admin Login Screen
-    if not st.session_state.admin_authenticated:
-        st.title("🔐 Admin Login Portal")
-        st.markdown("Yahan se sirf authorized teacher/admin access kar sakte hain.")
-        
-        col1, _ = st.columns([1.2, 1])
-        with col1:
-            with st.form("admin_login_form"):
-                in_user = st.text_input("Admin Username:")
-                in_pass = st.text_input("Admin Password:", type="password")
-                btn_login = st.form_submit_button("Sign In as Admin", type="primary")
-                
-                if btn_login:
-                    if in_user == ADMIN_USERNAME and in_pass == ADMIN_PASSWORD:
-                        st.session_state.admin_authenticated = True
-                        st.success("Admin Login Successful!")
-                        time.sleep(0.5)
-                        st.rerun()
-                    else:
-                        st.error("Galat Username ya Password! Access Denied.")
-        st.stop()
+    else:
+        st.title("🛠️ Lab Administrator Login")
+        st.caption("Authorized Physics Faculty / Lab Incharge Login.")
 
-    st.sidebar.success(f"👑 Admin Logged In: `{ADMIN_USERNAME}`")
-    if st.sidebar.button("Log Out Admin"):
-        st.session_state.admin_authenticated = False
+        with st.form("admin_login_form"):
+            admin_user = st.text_input("Admin Username:", value="admin")
+            admin_pass = st.text_input("Admin Password:", type="password")
+            submit_admin = st.form_submit_button("Sign In as Administrator", type="primary")
+
+            if submit_admin:
+                if admin_user == "admin" and admin_pass == "admin123":
+                    st.session_state["logged_in"] = True
+                    st.session_state["user_role"] = "Admin"
+                    st.session_state["user_info"] = {"name": "Lab Administrator"}
+                    st.rerun()
+                else:
+                    st.error("Invalid Admin Username or Password.")
+
+        st.info("💡 Default Admin Credentials:\n- **Username:** `admin` | **Password:** `admin123`")
+
+else:
+    # Top User Banner & Logout
+    st.sidebar.success(f"Logged in as: **{st.session_state['user_info']['name']}** ({st.session_state['user_role']})")
+    if st.sidebar.button("Logout"):
+        st.session_state["logged_in"] = False
+        st.session_state["user_role"] = None
+        st.session_state["user_info"] = None
         st.rerun()
 
-    st.title("⚙️ Teacher & Exam Control Center")
-    st.info(f"🕒 Current Indian Standard Time (IST): **{get_ist_now().strftime('%Y-%m-%d %I:%M %p')}**")
+    # =========================================================================
+    # 1. ADMIN DASHBOARD & CONTROLS
+    # =========================================================================
+    if st.session_state["user_role"] == "Admin":
+        st.title("🛠️ Physics Lab SOP Master Admin & Publisher")
+        st.caption("Manage standard operating procedures, toggle visibility for students, and upload attachments.")
 
-    quizzes_df = get_all_quizzes()
-    
-    admin_tab = st.selectbox("Select Management Section:", [
-        "👥 Master Student Directory (Upload Once with SR No & Class)", 
-        "📚 Create & Manage Quizzes (Class Specific & Edit Date/Time)", 
-        "📝 Question Bank (Excel/Manual)",
-        "📊 Student Results & Delete Controls", 
-        "💾 Full Database Backup & Restore (Excel)"
-    ])
+        adm_tab1, adm_tab2 = st.tabs(["📋 SOP Management & Attachments", "👥 Student Roster Management"])
 
-    st.divider()
+        with adm_tab1:
+            df_all = load_sops(published_only=False)
+            total_count = len(df_all)
+            pub_count = len(df_all[df_all["is_published"] == 1])
+            draft_count = total_count - pub_count
 
-    # --- SECTION 1: MASTER STUDENT DIRECTORY (ONE-TIME UPLOAD) ---
-    if admin_tab == "👥 Master Student Directory (Upload Once with SR No & Class)":
-        st.subheader("👥 Master Student Directory")
-        st.markdown("""
-        Ek baar yahan sabhi students ki Excel list upload kar dein. **Har naye quiz me alag se list daalne ki zaroorat nahi padegi.**
-        - Student ka **Password by default uska `SR No`** rahega.
-        - Excel columns format: **`sr_no`**, **`name`**, **`class`**, **`password`** (optional).
-        """)
-        
-        with st.expander("📂 Bulk Upload Master Students Directory via Excel / CSV", expanded=True):
-            uploaded_master_stu = st.file_uploader("Upload Master Students Excel (.xlsx / .csv):", type=["xlsx", "csv"])
-            if uploaded_master_stu:
-                try:
-                    df = pd.read_csv(uploaded_master_stu) if uploaded_master_stu.name.endswith(".csv") else pd.read_excel(uploaded_master_stu)
-                    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
-                    
-                    # Detect columns
-                    sr_col = next((c for c in df.columns if c in ["sr_no", "srno", "roll_no", "rollno", "id"]), df.columns[0])
-                    name_col = next((c for c in df.columns if c in ["name", "student_name", "student"]), df.columns[1] if len(df.columns) > 1 else df.columns[0])
-                    class_col = next((c for c in df.columns if c in ["class", "class_name", "standard", "grade"]), df.columns[2] if len(df.columns) > 2 else None)
-                    pass_col = next((c for c in df.columns if c in ["password", "pass", "pin"]), None)
-                    
-                    st.write("File Preview:")
-                    st.dataframe(df.head(5))
-                    
-                    if st.button("🚀 Import All Students to Master Directory"):
-                        conn = get_db()
-                        cur = conn.cursor()
-                        added_cnt = 0
-                        for _, r in df.iterrows():
-                            s_sr = str(r[sr_col]).strip() if pd.notna(r[sr_col]) else ""
-                            s_name = str(r[name_col]).strip() if pd.notna(r[name_col]) else ""
-                            s_class = str(r[class_col]).strip() if (class_col and pd.notna(r[class_col])) else "Class 11"
-                            s_pass = str(r[pass_col]).strip() if (pass_col and pd.notna(r[pass_col])) else s_sr  # Default password = SR No
-                            
-                            if s_sr and s_name:
-                                try:
-                                    cur.execute('''
-                                        INSERT INTO master_students (sr_no, student_name, class_name, password)
-                                        VALUES (?, ?, ?, ?)
-                                        ON CONFLICT(sr_no) DO UPDATE SET student_name=excluded.student_name, class_name=excluded.class_name, password=excluded.password
-                                    ''', (s_sr, s_name, s_class, s_pass))
-                                    added_cnt += 1
-                                except Exception:
-                                    pass
-                        conn.commit()
-                        conn.close()
-                        st.success(f"Successfully {added_cnt} students Master Directory me add/update ho gaye!")
-                        time.sleep(1)
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Error reading file: {e}")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total SOP Entries", total_count)
+            c2.metric("Visible to Students (Published)", pub_count)
+            c3.metric("Drafts (Hidden)", draft_count)
 
-        # Manual Single Student Add
-        with st.expander("➕ Add Single Student Manually"):
-            with st.form("manual_student_form"):
-                m_sr = st.text_input("SR No / Roll No:")
-                m_name = st.text_input("Student Name:")
-                m_class = st.text_input("Class (e.g., Class 11 / Class 12):", value="Class 11")
-                m_pwd = st.text_input("Password (Leave blank to use SR No as password):", type="password")
-                
-                if st.form_submit_button("Save Student to Master Directory"):
-                    if m_sr and m_name and m_class:
-                        final_p = m_pwd.strip() if m_pwd.strip() else m_sr.strip()
-                        conn = get_db()
-                        conn.execute('''
-                            INSERT INTO master_students (sr_no, student_name, class_name, password)
-                            VALUES (?, ?, ?, ?)
-                            ON CONFLICT(sr_no) DO UPDATE SET student_name=?, class_name=?, password=?
-                        ''', (m_sr.strip(), m_name.strip(), m_class.strip(), final_p, m_name.strip(), m_class.strip(), final_p))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"Student '{m_name}' add ho gaya!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Sabhi fields bharna compulsory hai.")
+            st.divider()
 
-        st.markdown("---")
-        st.write("### Current Master Student Directory")
-        conn = get_db()
-        master_df = pd.read_sql_query("SELECT sr_no AS 'SR No', student_name AS 'Name', class_name AS 'Class', password AS 'Password' FROM master_students ORDER BY class_name, sr_no", conn)
-        conn.close()
-        
-        if master_df.empty:
-            st.info("Abhi master list me koi student nahi hai.")
-        else:
-            st.write(f"Total Enrolled Students: **{len(master_df)}**")
-            st.dataframe(master_df, use_container_width=True)
-            
-            c_del1, c_del2 = st.columns([3, 1])
-            del_sr_selected = c_del1.selectbox("Select Student SR No to Delete:", master_df['SR No'].tolist())
-            if c_del2.button(f"🗑️ Delete Student ({del_sr_selected})"):
-                conn = get_db()
-                conn.execute("DELETE FROM master_students WHERE sr_no = ?", (del_sr_selected,))
-                conn.commit()
-                conn.close()
-                st.warning(f"Student SR No '{del_sr_selected}' delete ho gaya.")
-                time.sleep(1)
-                st.rerun()
+            sections_list = ["All Sections"] + list(df_all["section"].unique())
+            selected_sec = st.selectbox("Filter by Category:", sections_list)
 
-    # --- SECTION 2: CREATE & MANAGE QUIZZES ---
-    elif admin_tab == "📚 Create & Manage Quizzes (Class Specific & Edit Date/Time)":
-        st.subheader("Manage Quizzes & Target Class")
-        
-        avail_classes = get_distinct_classes()
-        if "All Classes" not in avail_classes:
-            avail_classes.append("All Classes")
+            filtered_df = df_all if selected_sec == "All Sections" else df_all[df_all["section"] == selected_sec]
 
-        # 1. Create New Quiz
-        with st.expander("➕ Create New Quiz", expanded=False):
-            with st.form("new_quiz_form"):
-                q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Unit 1):")
-                target_cls = st.selectbox("Target Class (Sirf is class ke bachche login kar sakenge):", avail_classes)
-                q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
-                
-                c_d1, c_d2 = st.columns(2)
-                cur_ist = get_ist_now()
-                start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
-                start_time = c_d1.time_input("Start Time (IST):", value=(cur_ist - timedelta(minutes=10)).time())
-                end_date = c_d2.date_input("End Date (IST):", value=(cur_ist + timedelta(days=7)).date())
-                end_time = c_d2.time_input("End Time (IST):", value=cur_ist.time())
-                
-                submitted_quiz = st.form_submit_button("Create Quiz")
-                if submitted_quiz:
-                    start_str = f"{start_date} {start_time.strftime('%H:%M')}"
-                    end_str = f"{end_date} {end_time.strftime('%H:%M')}"
-                    if q_title:
+            for _, row in filtered_df.iterrows():
+                sop_id = int(row["sop_id"])
+                current_file = str(row["file_path"]) if row["file_path"] else ""
+                status_icon = "🟢 LIVE IN VIEWER" if row["is_published"] == 1 else "⚪ DRAFT (Hidden)"
+                file_icon = "📎 [PDF Attached]" if current_file else "📄 [No File]"
+
+                with st.expander(f"SOP #{row['sop_id']} - {row['title']} | {status_icon} | {file_icon}"):
+                    with st.form(key=f"edit_form_{sop_id}"):
+                        f1, f2, f3 = st.columns([2, 1, 1])
+                        with f1:
+                            new_title = st.text_input("SOP Title:", value=row["title"])
+                        with f2:
+                            new_format = st.text_input("Category Tag:", value=row["format"], disabled=True)
+                        with f3:
+                            is_pub = st.checkbox("✅ Publish to Viewer Portal", value=bool(row["is_published"]), key=f"pub_{sop_id}")
+
+                        new_guideline = st.text_area("SOP Guideline Text:", value=row["sop_guideline"], height=90)
+
+                        f4, f5 = st.columns(2)
+                        with f4:
+                            new_status = st.selectbox("Compliance Status:", ["Active", "Under Review", "Draft", "Archived"],
+                                                      index=0 if row["status"] == "Active" else 1)
+                        with f5:
+                            new_remarks = st.text_input("Designated Desk / Location:", value=row["remarks"] if row["remarks"] else "")
+
+                        uploaded_file = st.file_uploader(f"Attach Document (PDF/Doc/Image) for SOP #{sop_id}",
+                                                         type=["pdf", "png", "jpg", "jpeg", "docx"], key=f"up_{sop_id}")
+
+                        save_btn = st.form_submit_button("Save & Update SOP")
+                        if save_btn:
+                            file_save_path = current_file
+                            if uploaded_file is not None:
+                                ext = uploaded_file.name.split(".")[-1]
+                                file_save_path = os.path.join(UPLOAD_DIR, f"SOP_{sop_id}_{int(datetime.now().timestamp())}.{ext}")
+                                with open(file_save_path, "wb") as f:
+                                    f.write(uploaded_file.getbuffer())
+
+                            update_sop(sop_id, new_title, new_guideline, 1 if is_pub else 0, new_status, new_remarks, file_save_path)
+                            st.success(f"SOP #{sop_id} '{new_title}' updated successfully!")
+                            st.rerun()
+
+                    if current_file and os.path.exists(current_file):
+                        st.info(f"Attached: `{os.path.basename(current_file)}`")
+                        if current_file.lower().endswith(".pdf"):
+                            with st.expander("👁️ Preview PDF Document"):
+                                show_pdf_viewer(current_file)
+
+        with adm_tab2:
+            st.subheader("Student Authentication Roster")
+            conn = get_db_connection()
+            students_df = pd.read_sql_query("SELECT * FROM students ORDER BY id ASC", conn)
+
+            st.dataframe(students_df, use_container_width=True)
+
+            st.markdown("##### ➕ Register New Student Credentials")
+            with st.form("add_student_form"):
+                sc1, sc2, sc3 = st.columns(3)
+                with sc1:
+                    new_st_name = st.text_input("Student Full Name (Username)*")
+                with sc2:
+                    new_st_sr = st.text_input("SR Number (Password)*")
+                with sc3:
+                    new_st_class = st.text_input("Class & Section", value="Class 11-A")
+
+                add_st_btn = st.form_submit_button("Add Student Record")
+                if add_st_btn:
+                    if new_st_name and new_st_sr:
                         try:
-                            conn = get_db()
                             c = conn.cursor()
-                            c.execute('''
-                                INSERT INTO quizzes (quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active)
-                                VALUES (?, ?, ?, ?, ?, 1)
-                            ''', (q_title, target_cls, q_dur, start_str, end_str))
+                            c.execute("INSERT INTO students (student_name, sr_number, class_section) VALUES (?, ?, ?)",
+                                      (new_st_name.strip(), new_st_sr.strip(), new_st_class.strip()))
                             conn.commit()
+                            st.success(f"Student '{new_st_name}' registered successfully with SR Number: {new_st_sr}")
                             conn.close()
-                            st.success(f"Quiz '{q_title}' successfully ban gaya!")
-                            time.sleep(1)
                             st.rerun()
                         except sqlite3.IntegrityError:
-                            st.error("Is naam se quiz pehle se bana hua hai.")
+                            st.error("Student Name or SR Number already exists in database.")
                     else:
-                        st.error("Quiz title bharna compulsory hai.")
-
-        # 2. Edit Existing Quiz Details (Date, Time, Duration, Class)
-        with st.expander("✏️ Edit Date, Time & Details of Existing Quiz", expanded=True):
-            if quizzes_df.empty:
-                st.info("Pehle koi Quiz create karein.")
-            else:
-                quiz_map = {r['quiz_title']: r['id'] for _, r in quizzes_df.iterrows()}
-                edit_q_title = st.selectbox("Select Quiz to Edit:", list(quiz_map.keys()), key="edit_selector")
-                edit_q_id = quiz_map[edit_q_title]
-                
-                conn = get_db()
-                q_to_edit = conn.execute("SELECT * FROM quizzes WHERE id = ?", (edit_q_id,)).fetchone()
-                conn.close()
-                
-                try:
-                    cur_s_dt = datetime.strptime(q_to_edit['start_datetime'], "%Y-%m-%d %H:%M")
-                    cur_e_dt = datetime.strptime(q_to_edit['end_datetime'], "%Y-%m-%d %H:%M")
-                except Exception:
-                    cur_s_dt = get_ist_now()
-                    cur_e_dt = get_ist_now() + timedelta(days=7)
-
-                with st.form(f"edit_quiz_form_{edit_q_id}"):
-                    new_edit_title = st.text_input("Quiz Title:", value=q_to_edit['quiz_title'])
-                    cur_cls_idx = avail_classes.index(q_to_edit['target_class']) if q_to_edit['target_class'] in avail_classes else 0
-                    new_edit_cls = st.selectbox("Target Class:", avail_classes, index=cur_cls_idx)
-                    new_edit_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=int(q_to_edit['duration_minutes']))
-                    
-                    ec1, ec2 = st.columns(2)
-                    new_s_date = ec1.date_input("Start Date (IST):", value=cur_s_dt.date())
-                    new_s_time = ec1.time_input("Start Time (IST):", value=cur_s_dt.time())
-                    new_e_date = ec2.date_input("End Date (IST):", value=cur_e_dt.date())
-                    new_e_time = ec2.time_input("End Time (IST):", value=cur_e_dt.time())
-                    
-                    btn_update_quiz = st.form_submit_button("💾 Save Updated Date, Time & Details", type="primary")
-                    if btn_update_quiz:
-                        up_start_str = f"{new_s_date} {new_s_time.strftime('%H:%M')}"
-                        up_end_str = f"{new_e_date} {new_e_time.strftime('%H:%M')}"
-                        
-                        conn = get_db()
-                        conn.execute('''
-                            UPDATE quizzes 
-                            SET quiz_title = ?, target_class = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?
-                            WHERE id = ?
-                        ''', (new_edit_title, new_edit_cls, new_edit_dur, up_start_str, up_end_str, edit_q_id))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"'{new_edit_title}' successfully update ho gaya!")
-                        time.sleep(1)
-                        st.rerun()
-
-        st.markdown("---")
-        st.write("### Existing Quizzes List & Controls")
-        if not quizzes_df.empty:
-            for _, r in quizzes_df.iterrows():
-                with st.container():
-                    st.markdown(f"**{r['quiz_title']}** | Target: `{r['target_class']}` | Duration: `{r['duration_minutes']} mins` | Status: `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
-                    st.markdown(f"🕒 **Valid From (IST):** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
-                    
-                    col_q1, col_q2, col_q3 = st.columns([1, 1.5, 1])
-                    if col_q1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
-                        new_status = 0 if r['is_active'] == 1 else 1
-                        conn = get_db()
-                        conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
-                        conn.commit()
-                        conn.close()
-                        st.rerun()
-                    
-                    if col_q2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
-                        now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
-                        now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
-                        conn = get_db()
-                        conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
-                        conn.commit()
-                        conn.close()
-                        st.success("Quiz abhi se LIVE kar diya gaya hai!")
-                        time.sleep(1)
-                        st.rerun()
-                    
-                    if col_q3.button(f"🗑️ Delete Quiz", key=f"del_quiz_{r['id']}", type="secondary"):
-                        conn = get_db()
-                        conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.warning(f"Quiz '{r['quiz_title']}' delete kar diya gaya.")
-                        time.sleep(1)
-                        st.rerun()
-                    st.divider()
-
-    # --- SECTION 3: QUESTION BANK ---
-    elif admin_tab == "📝 Question Bank (Excel/Manual)":
-        st.subheader("Manage Question Bank for Specific Quiz")
-        
-        if quizzes_df.empty:
-            st.info("Pehle ek Quiz create karein.")
-        else:
-            quiz_options = {row['quiz_title']: row['id'] for _, row in quizzes_df.iterrows()}
-            sel_q_title = st.selectbox("Select Quiz / Class:", list(quiz_options.keys()), key="q_quiz")
-            sel_q_id = quiz_options[sel_q_title]
-            
-            with st.expander("📂 Bulk Upload Questions via Excel/CSV", expanded=True):
-                st.markdown("Columns required: `question`, `option_a`, `option_b`, `option_c`, `option_d`, `correct_option`")
-                uploaded_q = st.file_uploader("Upload Questions File:", type=["xlsx", "csv"], key="q_file")
-                if uploaded_q:
-                    try:
-                        df = pd.read_csv(uploaded_q) if uploaded_q.name.endswith(".csv") else pd.read_excel(uploaded_q)
-                        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
-                        if st.button("Import Questions"):
-                            conn = get_db()
-                            cur = conn.cursor()
-                            cnt = 0
-                            for _, r in df.iterrows():
-                                cur.execute('''
-                                    INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(r["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
-                                cnt += 1
-                            conn.commit()
-                            conn.close()
-                            st.success(f"{cnt} questions imported!")
-                            time.sleep(1)
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-
-            st.markdown("---")
-            q_df = get_questions_by_quiz(sel_q_id)
-            st.write(f"Total Questions in {sel_q_title}: **{len(q_df)}**")
-            for idx, row in q_df.iterrows():
-                st.markdown(f"**Q{idx+1}. {row['question']}**")
-                st.markdown(f"- A: `{row['option_a']}` | B: `{row['option_b']}` | C: `{row['option_c']}` | D: `{row['option_d']}`")
-                st.markdown(f"🎯 **Answer:** `{row['correct_option']}`")
-                if st.button(f"Delete Q{idx+1}", key=f"del_q_{row['id']}"):
-                    conn = get_db()
-                    conn.execute("DELETE FROM questions WHERE id = ?", (row['id'],))
-                    conn.commit()
-                    conn.close()
-                    st.rerun()
-                st.divider()
-
-    # --- SECTION 4: STUDENT RESULTS & AUDIT ---
-    elif admin_tab == "📊 Student Results & Delete Controls":
-        st.subheader("Student Submissions, Scores & Audit Logs")
-        
-        if quizzes_df.empty:
-            st.info("Pehle ek Quiz create karein.")
-        else:
-            quiz_options = {row['quiz_title']: row['id'] for _, row in quizzes_df.iterrows()}
-            sel_q_title = st.selectbox("Select Quiz Class to View Results:", list(quiz_options.keys()))
-            sel_q_id = quiz_options[sel_q_title]
-            
-            conn = get_db()
-            try:
-                subs_df = pd.read_sql_query(
-                    "SELECT sr_no, student_name, class_name, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY id DESC", 
-                    conn, params=(sel_q_id,)
-                )
-            except Exception:
-                subs_df = pd.DataFrame()
+                        st.error("Please fill both Student Name and SR Number.")
             conn.close()
-            
-            if subs_df.empty:
-                st.info("Is quiz ke liye abhi tak koi submission nahi hai.")
-            else:
-                st.write("### Batch Performance & Security Audit Log")
-                st.dataframe(subs_df, use_container_width=True)
-                
-                col_d1, col_d2 = st.columns([2, 2])
-                with col_d1:
-                    csv_data = subs_df.to_csv(index=False).encode('utf-8')
-                    st.download_button("📥 Download Results (CSV)", data=csv_data, file_name=f"{sel_q_title}_results.csv", mime="text/csv")
-                
-                with col_d2:
-                    if st.button(f"🗑️ Clear ALL Submissions for {sel_q_title}", type="secondary"):
-                        conn = get_db()
-                        conn.execute("DELETE FROM submissions WHERE quiz_id = ?", (sel_q_id,))
-                        conn.execute("DELETE FROM student_responses WHERE quiz_id = ?", (sel_q_id,))
-                        conn.commit()
-                        conn.close()
-                        st.warning(f"Sabhi submissions {sel_q_title} ke liye delete ho gaye.")
-                        time.sleep(1)
-                        st.rerun()
-                
-                st.divider()
-                st.write("### 🖨️ View, Print or Delete Individual Student Answer Sheet")
-                student_display_list = [f"{r['sr_no']} - {r['student_name']}" for _, r in subs_df.iterrows()]
-                
-                c_sel1, c_sel2 = st.columns([3, 1])
-                selected_display = c_sel1.selectbox("Select Student:", student_display_list)
-                selected_sr = selected_display.split(" - ")[0] if selected_display else ""
-                
-                if c_sel2.button(f"🗑️ Delete Test"):
-                    conn = get_db()
-                    conn.execute("DELETE FROM submissions WHERE quiz_id = ? AND sr_no = ?", (sel_q_id, selected_sr))
-                    conn.execute("DELETE FROM student_responses WHERE quiz_id = ? AND sr_no = ?", (sel_q_id, selected_sr))
-                    conn.commit()
-                    conn.close()
-                    st.warning(f"Student SR No '{selected_sr}' ka response delete kar diya gaya.")
-                    time.sleep(1)
-                    st.rerun()
-                
-                if selected_sr:
-                    conn = get_db()
-                    ans_df = pd.read_sql_query(
-                        "SELECT question_text, selected_option, correct_option, is_correct, recorded_at FROM student_responses WHERE quiz_id = ? AND sr_no = ?", 
-                        conn, params=(sel_q_id, selected_sr)
-                    )
-                    student_summary = conn.execute(
-                        "SELECT sr_no, student_name, class_name, score, total_questions, tab_switches, submitted_at FROM submissions WHERE quiz_id = ? AND sr_no = ?", 
-                        (sel_q_id, selected_sr)
-                    ).fetchone()
-                    conn.close()
-                    
-                    html_content = f"""
-                    <div style="font-family: Arial, sans-serif; border: 2px solid #333; padding: 25px; border-radius: 8px; background-color: #fff; color: #111;">
-                        <h2 style="text-align: center; text-transform: uppercase;">Official Assessment Report ({sel_q_title})</h2>
-                        <table style="width: 100%; margin-bottom: 20px; font-size: 15px;">
-                            <tr>
-                                <td><strong>SR No:</strong> {student_summary['sr_no']} | <strong>Name:</strong> {student_summary['student_name']} ({student_summary['class_name']})</td>
-                                <td style="text-align: right;"><strong>Submitted At:</strong> {student_summary['submitted_at']}</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Score:</strong> <span style="color: green; font-weight: bold;">{student_summary['score']} / {student_summary['total_questions']}</span></td>
-                                <td style="text-align: right;"><strong>Tab Switches:</strong> <span style="color: red; font-weight: bold;">{student_summary['tab_switches']} times</span></td>
-                            </tr>
-                        </table>
-                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                            <thead>
-                                <tr style="background-color: #f2f2f2; text-align: left;">
-                                    <th style="border: 1px solid #ccc; padding: 8px;">Q.No</th>
-                                    <th style="border: 1px solid #ccc; padding: 8px;">Question</th>
-                                    <th style="border: 1px solid #ccc; padding: 8px;">Student Answer</th>
-                                    <th style="border: 1px solid #ccc; padding: 8px;">Correct Answer</th>
-                                    <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">Result</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                    """
-                    for idx, r in ans_df.iterrows():
-                        badge = '<span style="color: green; font-weight: bold;">✔ Correct</span>' if r['is_correct'] == 1 else '<span style="color: red; font-weight: bold;">✖ Wrong</span>'
-                        html_content += f"""
-                            <tr>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">{idx+1}</td>
-                                <td style="border: 1px solid #ccc; padding: 8px;">{r['question_text']}</td>
-                                <td style="border: 1px solid #ccc; padding: 8px;">{r['selected_option']}</td>
-                                <td style="border: 1px solid #ccc; padding: 8px;">{r['correct_option']}</td>
-                                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">{badge}</td>
-                            </tr>
-                        """
-                    html_content += "</tbody></table></div>"
-                    
-                    st.components.v1.html(f"""
-                        {html_content}
-                        <br>
-                        <button onclick="window.print()" style="background-color: #007bff; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; font-weight: bold;">🖨️ Print Report</button>
-                    """, height=600, scrolling=True)
 
-    # --- SECTION 5: FULL DATABASE BACKUP & RESTORE ---
-    elif admin_tab == "💾 Full Database Backup & Restore (Excel)":
-        st.subheader("💾 Export & Import Complete Portal Data (Excel Backup)")
-        
-        conn = get_db()
-        stu_export = pd.read_sql_query("SELECT * FROM master_students", conn)
-        q_export = pd.read_sql_query("SELECT * FROM quizzes", conn)
-        ques_export = pd.read_sql_query("SELECT * FROM questions", conn)
-        subs_export = pd.read_sql_query("SELECT * FROM submissions", conn)
-        resp_export = pd.read_sql_query("SELECT * FROM student_responses", conn)
-        conn.close()
-        
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            stu_export.to_excel(writer, sheet_name='Master_Students', index=False)
-            q_export.to_excel(writer, sheet_name='Quizzes', index=False)
-            ques_export.to_excel(writer, sheet_name='Questions', index=False)
-            subs_export.to_excel(writer, sheet_name='Submissions', index=False)
-            resp_export.to_excel(writer, sheet_name='Responses', index=False)
-        excel_data = output.getvalue()
-        
-        st.download_button(
-            label="📥 Download Full Database Backup (.xlsx)",
-            data=excel_data,
-            file_name=f"Quiz_Portal_Complete_Backup_{get_ist_now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        
-        st.divider()
-        st.write("### 📤 Restore Data from Excel Backup")
-        uploaded_backup = st.file_uploader("Upload previous Backup Excel file to restore data:", type=["xlsx"])
-        
-        if uploaded_backup:
-            if st.button("🚀 Restore Complete Data Now"):
-                try:
-                    excel_file = pd.ExcelFile(uploaded_backup)
-                    conn = get_db()
-                    cur = conn.cursor()
-                    
-                    if 'Master_Students' in excel_file.sheet_names:
-                        df_stu = pd.read_excel(excel_file, sheet_name='Master_Students')
-                        for _, r in df_stu.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO master_students (id, sr_no, student_name, class_name, password) VALUES (?, ?, ?, ?, ?)",
-                                        (r['id'], str(r['sr_no']), str(r['student_name']), str(r['class_name']), str(r['password'])))
-                    
-                    if 'Quizzes' in excel_file.sheet_names:
-                        df_q = pd.read_excel(excel_file, sheet_name='Quizzes')
-                        for _, r in df_q.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO quizzes (id, quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_title'], r['target_class'], r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
-                    
-                    if 'Questions' in excel_file.sheet_names:
-                        df_ques = pd.read_excel(excel_file, sheet_name='Questions')
-                        for _, r in df_ques.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO questions (id, quiz_id, question, option_a, option_b, option_c, option_d, correct_option) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_id'], r['question'], r['option_a'], r['option_b'], r['option_c'], r['option_d'], r['correct_option']))
-                    
-                    if 'Submissions' in excel_file.sheet_names:
-                        df_subs = pd.read_excel(excel_file, sheet_name='Submissions')
-                        for _, r in df_subs.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO submissions (id, quiz_id, sr_no, student_name, class_name, score, total_questions, tab_switches, status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_id'], str(r['sr_no']), r['student_name'], r['class_name'], r['score'], r['total_questions'], r['tab_switches'], r['status'], r['submitted_at']))
-                    
-                    conn.commit()
-                    conn.close()
-                    st.success("✅ Sara data successfully restore ho gaya!")
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Restore failed: {e}")
+    # =========================================================================
+    # 2. STUDENT / VIEWER PORTAL
+    # =========================================================================
+    else:
+        st.title("🔬 Standard Operating Procedure (SOP) – Physics Laboratory")
+        st.markdown(f"**Student:** {st.session_state['user_info']['name']} | **SR Number:** `{st.session_state['user_info']['sr']}` | **Batch:** `{st.session_state['user_info']['class']}`")
+        st.caption("Official Safety Protocols, Apparatus Handling Guidelines & Operational Standards")
 
-# ==========================================
-# 5. STUDENT EXAM PORTAL (SR No & Password Login)
-# ==========================================
-else:
-    if "student_sr" not in st.session_state:
-        st.session_state.student_sr = None
-    if "student_name" not in st.session_state:
-        st.session_state.student_name = None
-    if "student_class" not in st.session_state:
-        st.session_state.student_class = None
-    if "selected_quiz_id" not in st.session_state:
-        st.session_state.selected_quiz_id = None
-    if "test_started" not in st.session_state:
-        st.session_state.test_started = False
-    if "start_timestamp" not in st.session_state:
-        st.session_state.start_timestamp = None
+        df_live = load_sops(published_only=True)
 
-    quizzes_df = get_all_quizzes()
-    active_quizzes = quizzes_df[quizzes_df['is_active'] == 1] if not quizzes_df.empty else pd.DataFrame()
+        if df_live.empty:
+            st.info("No SOP protocols are currently published for viewing.")
+        else:
+            search_query = st.text_input("🔍 Search Protocols, Apparatus Rules, or Safety Guidelines:")
+            if search_query:
+                df_live = df_live[
+                    df_live["title"].str.contains(search_query, case=False)
+                    | df_live["sop_guideline"].str.contains(search_query, case=False)
+                    | df_live["section"].str.contains(search_query, case=False)
+                ]
 
-    if active_quizzes.empty:
-        st.error("🛑 Filhal koi bhi exam active nahi hai. Kripya teacher se sampark karein.")
-        st.stop()
+            available_sections = sorted(df_live["section"].unique())
+            tabs = st.tabs(available_sections)
 
-    # Student Login Form
-    if not st.session_state.student_sr or not st.session_state.selected_quiz_id:
-        st.title("🎓 Student Examination Login Portal")
-        st.markdown("Apna Quiz select karein aur apna **SR No / Roll No** aur **Password (Aapka SR No)** darj karein.")
-        
-        quiz_opts = {f"{row['quiz_title']} ({row['target_class']})": row['id'] for _, row in active_quizzes.iterrows()}
-        
-        col1, _ = st.columns([1.2, 1])
-        with col1:
-            with st.form("student_login_form"):
-                sel_quiz_label = st.selectbox("Select Quiz:", list(quiz_opts.keys()))
-                in_sr = st.text_input("Student SR No / Roll No:")
-                in_pwd = st.text_input("Password (Default: Aapka SR No):", type="password")
-                
-                submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
-                
-                if submit_login:
-                    q_id = quiz_opts[sel_quiz_label]
-                    clean_sr = in_sr.strip()
-                    clean_pwd = in_pwd.strip()
-                    
-                    conn = get_db()
-                    q_data = conn.execute("SELECT * FROM quizzes WHERE id = ?", (q_id,)).fetchone()
-                    student_data = conn.execute("SELECT * FROM master_students WHERE sr_no = ?", (clean_sr,)).fetchone()
-                    conn.close()
-                    
-                    now_ist = get_ist_now().replace(tzinfo=None)
-                    try:
-                        start_dt = datetime.strptime(q_data['start_datetime'], "%Y-%m-%d %H:%M")
-                        end_dt = datetime.strptime(q_data['end_datetime'], "%Y-%m-%d %H:%M")
-                    except Exception:
-                        start_dt = now_ist - timedelta(days=1)
-                        end_dt = now_ist + timedelta(days=10)
-                    
-                    if not clean_sr or not clean_pwd:
-                        st.error("Kripya SR No aur Password dono darj karein.")
-                    elif not student_data:
-                        st.error(f"❌ SR No '{clean_sr}' Master Student Directory me registered nahi hai!")
-                    elif student_data['password'] != clean_pwd:
-                        st.error("Galat Password! (Default password aapka SR No hai).")
-                    elif q_data['target_class'] != "All Classes" and student_data['class_name'] != q_data['target_class']:
-                        st.error(f"❌ Yeh exam '{q_data['target_class']}' ke liye hai. Aapki registered class '{student_data['class_name']}' hai.")
-                    elif now_ist < start_dt:
-                        st.error(f"⏳ Exam abhi shuru nahi hua hai! Start Time (IST): {q_data['start_datetime']}")
-                    elif now_ist > end_dt:
-                        st.error(f"⏰ Exam ka samay samapt ho chuka hai! End Time (IST): {q_data['end_datetime']}")
-                    else:
-                        st.session_state.student_sr = clean_sr
-                        st.session_state.student_name = student_data['student_name']
-                        st.session_state.student_class = student_data['class_name']
-                        st.session_state.selected_quiz_id = q_id
-                        st.rerun()
-        st.stop()
+            for i, sec_name in enumerate(available_sections):
+                with tabs[i]:
+                    sec_records = df_live[df_live["section"] == sec_name]
+                    st.subheader(f"{sec_name}")
 
-    student_sr = st.session_state.student_sr
-    student_name = st.session_state.student_name
-    student_class = st.session_state.student_class
-    quiz_id = st.session_state.selected_quiz_id
+                    for _, sop_item in sec_records.iterrows():
+                        with st.container(border=True):
+                            h1, h2 = st.columns([3, 1])
+                            with h1:
+                                st.markdown(f"#### 📑 #{sop_item['sop_id']} {sop_item['title']}")
+                            with h2:
+                                st.markdown(f"**Classification:** `{sop_item['format']}`")
 
-    conn = get_db()
-    quiz_info = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
-    conn.close()
+                            st.markdown(f"**📋 Operational Guidelines:**\n{sop_item['sop_guideline']}")
 
-    st.sidebar.markdown(f"**Candidate:** `{student_name}`")
-    st.sidebar.markdown(f"**SR No:** `{student_sr}` | **Class:** `{student_class}`")
-    st.sidebar.markdown(f"**Exam:** `{quiz_info['quiz_title']}`")
+                            f1, f2 = st.columns([2, 2])
+                            with f1:
+                                st.caption(f"📍 **Designated Location:** {sop_item['remarks']}")
+                            with f2:
+                                st.caption(f"⚡ **Status:** `{sop_item['status']}`")
 
-    if st.sidebar.button("Log Out"):
-        st.session_state.student_sr = None
-        st.session_state.student_name = None
-        st.session_state.student_class = None
-        st.session_state.selected_quiz_id = None
-        st.session_state.test_started = False
-        st.session_state.start_timestamp = None
-        st.rerun()
+                            file_path = str(sop_item["file_path"]) if sop_item["file_path"] else ""
+                            if file_path and os.path.exists(file_path):
+                                st.divider()
+                                cb1, cb2 = st.columns([1, 3])
+                                with open(file_path, "rb") as f:
+                                    file_bytes = f.read()
+                                    file_name = os.path.basename(file_path)
 
-    st.title(f"📝 {quiz_info['quiz_title']}")
+                                with cb1:
+                                    st.download_button(
+                                        label="📥 Download Attached File",
+                                        data=file_bytes,
+                                        file_name=file_name,
+                                        mime="application/pdf",
+                                        key=f"dl_st_{sop_item['sop_id']}",
+                                    )
 
-    conn = get_db()
-    sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND sr_no = ?", (quiz_id, student_sr)).fetchone()
-    conn.close()
+                                if file_path.lower().endswith(".pdf"):
+                                    with st.expander(f"👁️ View Document: {sop_item['title']} (In-Browser Viewer)"):
+                                        show_pdf_viewer(file_path)
+                                elif file_path.lower().endswith((".png", ".jpg", ".jpeg")):
+                                    with st.expander("👁️ View Attached Diagram / Schematic"):
+                                        st.image(file_path, use_container_width=True)
 
-    if sub_check:
-        st.success(f"✅ {student_name}, aapka test pehle hi successfully submit ho chuka hai!")
-        st.metric("Score", f"{sub_check['score']} / {sub_check['total_questions']}")
-        st.metric("Tab Switches Recorded", f"{sub_check['tab_switches']} times")
-        st.stop()
-
-    questions_df = get_questions_by_quiz(quiz_id)
-    if questions_df.empty:
-        st.info("Is quiz me abhi koi question add nahi kiya gaya hai.")
-        st.stop()
-
-    if not st.session_state.test_started:
-        st.markdown("### 📌 Exam Guidelines & Anti-Cheat System:")
-        st.markdown(f"""
-        - **Student Name:** `{student_name}` (SR: `{student_sr}`)
-        - **Duration:** `{quiz_info['duration_minutes']} Minutes`
-        - **Total Questions:** `{len(questions_df)}`
-        - **Rules:**
-            1. Tab switch karne par warning aayegi aur count record hoga.
-            2. 3 baar tab switch karne par test auto-submit ho jayega.
-            3. Timer continuous chalega.
-        """)
-        if st.button("🚀 Start Exam Now", type="primary"):
-            st.session_state.test_started = True
-            st.session_state.start_timestamp = time.time()
-            st.rerun()
-        st.stop()
-
-    elapsed = time.time() - st.session_state.start_timestamp
-    total_sec = quiz_info['duration_minutes'] * 60
-    remaining = total_sec - elapsed
-
-    if remaining <= 0:
-        st.error("⏰ Time Up! Samay samapt ho gaya hai.")
-        st.stop()
-
-    inject_live_timer_and_security(remaining, quiz_id, student_sr)
-
-    # Exam Form
-    with st.form("exam_form"):
-        answers = {}
-        for idx, row in questions_df.iterrows():
-            st.markdown(f"**Q{idx+1}. {row['question']}**")
-            opts = [row['option_a'], row['option_b'], row['option_c'], row['option_d']]
-            answers[row['id']] = st.radio("Choose Option:", opts, key=f"q_{row['id']}", index=None)
-            st.markdown("---")
-            
-        submitted = st.form_submit_button("Submit Final Answers", type="primary")
-        
-        if submitted:
-            sub_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
-            score = 0
-            
-            conn = get_db()
-            cur = conn.cursor()
-            
-            for _, row in questions_df.iterrows():
-                q_id_num = row['id']
-                sel_opt = answers.get(q_id_num)
-                correct_opt = row['correct_option']
-                is_correct = 1 if (sel_opt == correct_opt) else 0
-                if is_correct:
-                    score += 1
-                    
-                cur.execute('''
-                    INSERT INTO student_responses (quiz_id, sr_no, student_name, question_id, question_text, selected_option, correct_option, is_correct, recorded_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (quiz_id, student_sr, student_name, q_id_num, row['question'], sel_opt if sel_opt else "Unattempted", correct_opt, is_correct, sub_time))
-                
-            cur.execute('''
-                INSERT OR REPLACE INTO submissions (quiz_id, sr_no, student_name, class_name, score, total_questions, tab_switches, status, submitted_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, 'Completed', ?)
-            ''', (quiz_id, student_sr, student_name, student_class, score, len(questions_df), sub_time))
-            
-            conn.commit()
-            conn.close()
-            
-            st.balloons()
-            st.success(f"🎉 Exam Successfully Submitted! Score: {score}/{len(questions_df)}")
-            time.sleep(2)
-            st.rerun()
+            st.divider()
+            csv_data = df_live.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Export Full SOP Standards (CSV)",
+                data=csv_data,
+                file_name="Physics_Lab_SOP_Standards.csv",
+                mime="text/csv",
+            )
