@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_v11.db"
+DB_FILE = "master_quiz_prod_v12.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -28,14 +28,12 @@ def get_ist_now():
     return datetime.now(timezone.utc).astimezone(IST)
 
 def clean_text(text):
-    """Normalize text: removes extra spaces, lowercase conversion"""
     if text is None:
         return ""
     text_str = str(text).strip()
     return re.sub(r'\s+', ' ', text_str)
 
 def clean_sr_no(sr_val):
-    """Clean SR No: converts float '101.0' from Excel to string '101'"""
     if pd.isna(sr_val) or sr_val is None:
         return ""
     sr_str = str(sr_val).strip()
@@ -44,7 +42,7 @@ def clean_sr_no(sr_val):
     return sr_str
 
 # ==========================================
-# 2. BULLETPROOF DATABASE CONNECTION
+# 2. BULLETPROOF DATABASE MANAGEMENT
 # ==========================================
 def get_db():
     conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
@@ -143,7 +141,7 @@ def init_db():
             VALUES (?, ?, ?)
         ''', (clean_text(name), clean_sr_no(sr), clean_text(name).lower()))
     
-    # Demo Quizzes
+    # Demo Quiz 1
     c.execute('''
         INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
         VALUES (?, ?, ?, ?, ?)
@@ -163,6 +161,7 @@ def init_db():
                 (q_id_1, "Dimensional formula of Work is?", "[MLT-2]", "[ML2T-2]", "[MLT-1]", "[ML2T-1]", "[ML2T-2]")
             ])
 
+    # Demo Quiz 2
     c.execute('''
         INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
         VALUES (?, ?, ?, ?, ?)
@@ -805,7 +804,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.error(f"Restore failed: {e}")
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL (Fuzzy & Smart Login Matching)
+# 5. STUDENT EXAM PORTAL (Name + SR No Password Login)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
