@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_v10.db"
+DB_FILE = "master_quiz_system_v11.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -25,6 +25,15 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 def get_ist_now():
     return datetime.now(timezone.utc).astimezone(IST)
+
+# Clean String Helper (Spaces aur Float issues theek karne ke liye)
+def clean_str(val):
+    if val is None or pd.isna(val):
+        return ""
+    s = str(val).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
 
 # ==========================================
 # 2. BULLETPROOF DATABASE MANAGEMENT
@@ -39,7 +48,7 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1. Master Student Directory Table (Name + SR No as Password)
+    # 1. Master Student Directory Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS master_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,6 +185,12 @@ def get_all_quizzes():
 def get_questions_by_quiz(quiz_id):
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM questions WHERE quiz_id = ?", conn, params=(quiz_id,))
+    conn.close()
+    return df
+
+def get_master_students_list():
+    conn = get_db()
+    df = pd.read_sql_query("SELECT student_name, sr_no FROM master_students ORDER BY student_name", conn)
     conn.close()
     return df
 
@@ -327,31 +342,36 @@ if selected_portal == "⚙️ Admin Control Center":
                     df = pd.read_csv(uploaded_master_stu) if uploaded_master_stu.name.endswith(".csv") else pd.read_excel(uploaded_master_stu)
                     df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
                     
-                    # Detect name and sr_no columns
+                    # Clean detection
                     name_col = next((c for c in df.columns if c in ["name", "student_name", "student"]), df.columns[0])
                     sr_col = next((c for c in df.columns if c in ["sr_no", "srno", "roll_no", "rollno", "id", "password"]), df.columns[1] if len(df.columns) > 1 else df.columns[0])
                     
-                    st.write("File Preview (First 5 Rows):")
-                    st.dataframe(df[[name_col, sr_col]].head(5))
+                    # Data clean preview
+                    clean_df = pd.DataFrame()
+                    clean_df["Student Name"] = df[name_col].apply(clean_str)
+                    clean_df["SR No (Password)"] = df[sr_col].apply(clean_str)
+                    clean_df = clean_df[(clean_df["Student Name"] != "") & (clean_df["SR No (Password)"] != "")]
+                    
+                    st.write("Clean Data Preview (First 5 Rows):")
+                    st.dataframe(clean_df.head(5))
                     
                     if st.button("🚀 Import All Students to Master Directory"):
                         conn = get_db()
                         cur = conn.cursor()
                         added_cnt = 0
-                        for _, r in df.iterrows():
-                            s_name = str(r[name_col]).strip() if pd.notna(r[name_col]) else ""
-                            s_sr = str(r[sr_col]).strip() if pd.notna(r[sr_col]) else ""
+                        for _, r in clean_df.iterrows():
+                            s_name = r["Student Name"]
+                            s_sr = r["SR No (Password)"]
                             
-                            if s_name and s_sr:
-                                try:
-                                    cur.execute('''
-                                        INSERT INTO master_students (student_name, sr_no)
-                                        VALUES (?, ?)
-                                        ON CONFLICT(student_name) DO UPDATE SET sr_no=excluded.sr_no
-                                    ''', (s_name, s_sr))
-                                    added_cnt += 1
-                                except Exception:
-                                    pass
+                            try:
+                                cur.execute('''
+                                    INSERT INTO master_students (student_name, sr_no)
+                                    VALUES (?, ?)
+                                    ON CONFLICT(student_name) DO UPDATE SET sr_no=excluded.sr_no
+                                ''', (s_name, s_sr))
+                                added_cnt += 1
+                            except Exception:
+                                pass
                         conn.commit()
                         conn.close()
                         st.success(f"Successfully {added_cnt} students add/update ho gaye!")
@@ -366,16 +386,18 @@ if selected_portal == "⚙️ Admin Control Center":
                 m_sr = st.text_input("SR No (Student Login Password):")
                 
                 if st.form_submit_button("Save Student"):
-                    if m_name and m_sr:
+                    c_name = clean_str(m_name)
+                    c_sr = clean_str(m_sr)
+                    if c_name and c_sr:
                         conn = get_db()
                         conn.execute('''
                             INSERT INTO master_students (student_name, sr_no)
                             VALUES (?, ?)
                             ON CONFLICT(student_name) DO UPDATE SET sr_no=?
-                        ''', (m_name.strip(), m_sr.strip(), m_sr.strip()))
+                        ''', (c_name, c_sr, c_sr))
                         conn.commit()
                         conn.close()
-                        st.success(f"Student '{m_name}' add ho gaya!")
+                        st.success(f"Student '{c_name}' (SR: {c_sr}) add ho gaya!")
                         time.sleep(1)
                         st.rerun()
                     else:
@@ -383,9 +405,7 @@ if selected_portal == "⚙️ Admin Control Center":
 
         st.markdown("---")
         st.write("### Current Registered Students List")
-        conn = get_db()
-        master_df = pd.read_sql_query("SELECT student_name AS 'Student Name', sr_no AS 'SR No (Password)' FROM master_students ORDER BY student_name", conn)
-        conn.close()
+        master_df = get_master_students_list()
         
         if master_df.empty:
             st.info("Abhi master list me koi student nahi hai.")
@@ -394,7 +414,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.dataframe(master_df, use_container_width=True)
             
             c_del1, c_del2 = st.columns([3, 1])
-            del_student_selected = c_del1.selectbox("Select Student to Delete:", master_df['Student Name'].tolist())
+            del_student_selected = c_del1.selectbox("Select Student to Delete:", master_df['student_name'].tolist())
             if c_del2.button(f"🗑️ Delete Student"):
                 conn = get_db()
                 conn.execute("DELETE FROM master_students WHERE student_name = ?", (del_student_selected,))
@@ -432,7 +452,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             c.execute('''
                                 INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
                                 VALUES (?, ?, ?, ?, 1)
-                            ''', (q_title, q_dur, start_str, end_str))
+                            ''', (q_title.strip(), q_dur, start_str, end_str))
                             conn.commit()
                             conn.close()
                             st.success(f"Quiz '{q_title}' successfully ban gaya!")
@@ -483,7 +503,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             UPDATE quizzes 
                             SET quiz_title = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?
                             WHERE id = ?
-                        ''', (new_edit_title, new_edit_dur, up_start_str, up_end_str, edit_q_id))
+                        ''', (new_edit_title.strip(), new_edit_dur, up_start_str, up_end_str, edit_q_id))
                         conn.commit()
                         conn.close()
                         st.success(f"'{new_edit_title}' successfully update ho gaya!")
@@ -554,7 +574,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                 cur.execute('''
                                     INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(r["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
+                                ''', (sel_q_id, clean_str(r["question"]), clean_str(r["option_a"]), clean_str(r["option_b"]), clean_str(r["option_c"]), clean_str(r["option_d"]), clean_str(r["correct_option"])))
                                 cnt += 1
                             conn.commit()
                             conn.close()
@@ -739,31 +759,31 @@ if selected_portal == "⚙️ Admin Control Center":
                         df_stu = pd.read_excel(excel_file, sheet_name='Master_Students')
                         for _, r in df_stu.iterrows():
                             cur.execute("INSERT OR REPLACE INTO master_students (id, student_name, sr_no) VALUES (?, ?, ?)",
-                                        (r['id'], str(r['student_name']), str(r['sr_no'])))
+                                        (r['id'], clean_str(r['student_name']), clean_str(r['sr_no'])))
                     
                     if 'Quizzes' in excel_file.sheet_names:
                         df_q = pd.read_excel(excel_file, sheet_name='Quizzes')
                         for _, r in df_q.iterrows():
                             cur.execute("INSERT OR REPLACE INTO quizzes (id, quiz_title, duration_minutes, start_datetime, end_datetime, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_title'], r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
+                                        (r['id'], clean_str(r['quiz_title']), r['duration_minutes'], clean_str(r['start_datetime']), clean_str(r['end_datetime']), r['is_active']))
                     
                     if 'Questions' in excel_file.sheet_names:
                         df_ques = pd.read_excel(excel_file, sheet_name='Questions')
                         for _, r in df_ques.iterrows():
                             cur.execute("INSERT OR REPLACE INTO questions (id, quiz_id, question, option_a, option_b, option_c, option_d, correct_option) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_id'], r['question'], r['option_a'], r['option_b'], r['option_c'], r['option_d'], r['correct_option']))
+                                        (r['id'], r['quiz_id'], clean_str(r['question']), clean_str(r['option_a']), clean_str(r['option_b']), clean_str(r['option_c']), clean_str(r['option_d']), clean_str(r['correct_option'])))
                     
                     if 'Submissions' in excel_file.sheet_names:
                         df_subs = pd.read_excel(excel_file, sheet_name='Submissions')
                         for _, r in df_subs.iterrows():
                             cur.execute("INSERT OR REPLACE INTO submissions (id, quiz_id, student_name, sr_no, score, total_questions, tab_switches, status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_id'], r['student_name'], str(r['sr_no']), r['score'], r['total_questions'], r['tab_switches'], r['status'], r['submitted_at']))
+                                        (r['id'], r['quiz_id'], clean_str(r['student_name']), clean_str(r['sr_no']), r['score'], r['total_questions'], r['tab_switches'], clean_str(r['status']), clean_str(r['submitted_at'])))
                     
                     if 'Responses' in excel_file.sheet_names:
                         df_resp = pd.read_excel(excel_file, sheet_name='Responses')
                         for _, r in df_resp.iterrows():
                             cur.execute("INSERT OR REPLACE INTO student_responses (id, quiz_id, student_name, sr_no, question_id, question_text, selected_option, correct_option, is_correct, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_id'], r['student_name'], str(r['sr_no']), r['question_id'], r['question_text'], r['selected_option'], r['correct_option'], r['is_correct'], r['recorded_at']))
+                                        (r['id'], r['quiz_id'], clean_str(r['student_name']), clean_str(r['sr_no']), r['question_id'], clean_str(r['question_text']), clean_str(r['selected_option']), clean_str(r['correct_option']), r['is_correct'], clean_str(r['recorded_at'])))
                     
                     conn.commit()
                     conn.close()
@@ -774,7 +794,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.error(f"Restore failed: {e}")
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL (Name + SR No Password Login)
+# 5. STUDENT EXAM PORTAL (Robust Clean Match Login)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -806,20 +826,30 @@ else:
         with col1:
             with st.form("student_login_form"):
                 sel_quiz_title = st.selectbox("Select Quiz:", list(quiz_opts.keys()))
-                in_name = st.text_input("Student Name (Registered):", placeholder="Shashank Verma")
+                in_name = st.text_input("Student Name (Registered):", placeholder="e.g. Shashank Verma")
                 in_pwd = st.text_input("Password (Aapka SR No):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
                 
                 if submit_login:
                     q_id = quiz_opts[sel_quiz_title]
-                    clean_name = in_name.strip()
-                    clean_pwd = in_pwd.strip()
+                    clean_name = clean_str(in_name)
+                    clean_pwd = clean_str(in_pwd)
                     
                     conn = get_db()
                     q_data = conn.execute("SELECT * FROM quizzes WHERE id = ?", (q_id,)).fetchone()
-                    student_data = conn.execute("SELECT * FROM master_students WHERE LOWER(student_name) = ?", (clean_name.lower(),)).fetchone()
+                    
+                    # Fuzzy / Case-Insensitive Name & SR match
+                    all_students = conn.execute("SELECT student_name, sr_no FROM master_students").fetchall()
                     conn.close()
+                    
+                    matched_student = None
+                    for s in all_students:
+                        db_name = clean_str(s['student_name'])
+                        db_sr = clean_str(s['sr_no'])
+                        if db_name.lower() == clean_name.lower():
+                            matched_student = (db_name, db_sr)
+                            break
                     
                     now_ist = get_ist_now().replace(tzinfo=None)
                     try:
@@ -831,17 +861,17 @@ else:
                     
                     if not clean_name or not clean_pwd:
                         st.error("Kripya Naam aur Password (SR No) dono darj karein.")
-                    elif not student_data:
-                        st.error(f"❌ Student Name '{clean_name}' registered list me nahi hai!")
-                    elif str(student_data['sr_no']).strip() != clean_pwd:
+                    elif not matched_student:
+                        st.error(f"❌ Student Name '{clean_name}' master list me nahi mila! Kripya sahi spelling dalein.")
+                    elif matched_student[1] != clean_pwd:
                         st.error("Galat Password! (Password aapka SR Number hai).")
                     elif now_ist < start_dt:
                         st.error(f"⏳ Exam abhi shuru nahi hua hai! Start Time (IST): {q_data['start_datetime']}")
                     elif now_ist > end_dt:
                         st.error(f"⏰ Exam ka samay samapt ho chuka hai! End Time (IST): {q_data['end_datetime']}")
                     else:
-                        st.session_state.student_name = student_data['student_name']
-                        st.session_state.student_sr = str(student_data['sr_no'])
+                        st.session_state.student_name = matched_student[0]
+                        st.session_state.student_sr = matched_student[1]
                         st.session_state.selected_quiz_id = q_id
                         st.rerun()
         st.stop()
