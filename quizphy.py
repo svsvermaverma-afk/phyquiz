@@ -10,17 +10,17 @@ import streamlit.components.v1 as components
 # 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="Proctored Master Quiz Portal",
+    page_title="Proctored Quiz Portal",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_v9.db"
+DB_FILE = "master_quiz_system_v10.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
-# Indian Standard Time (IST: UTC + 5:30)
+# Indian Standard Time (IST)
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def get_ist_now():
@@ -39,23 +39,20 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1. Master Student Directory Table (Permanent Student Records)
+    # 1. Master Student Directory Table (Name + SR No as Password)
     c.execute('''
         CREATE TABLE IF NOT EXISTS master_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sr_no TEXT UNIQUE NOT NULL,
-            student_name TEXT NOT NULL,
-            class_name TEXT NOT NULL,
-            password TEXT NOT NULL
+            student_name TEXT UNIQUE NOT NULL,
+            sr_no TEXT NOT NULL
         )
     ''')
     
-    # 2. Quizzes Table (Class Targeted)
+    # 2. Quizzes Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             quiz_title TEXT UNIQUE NOT NULL,
-            target_class TEXT NOT NULL,
             duration_minutes INTEGER DEFAULT 15,
             start_datetime TEXT NOT NULL,
             end_datetime TEXT NOT NULL,
@@ -82,15 +79,14 @@ def init_db():
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             quiz_id INTEGER NOT NULL,
-            sr_no TEXT NOT NULL,
             student_name TEXT NOT NULL,
-            class_name TEXT NOT NULL,
+            sr_no TEXT NOT NULL,
             score INTEGER NOT NULL,
             total_questions INTEGER NOT NULL,
             tab_switches INTEGER DEFAULT 0,
             status TEXT DEFAULT 'Completed',
             submitted_at TEXT NOT NULL,
-            UNIQUE(quiz_id, sr_no)
+            UNIQUE(quiz_id, student_name)
         )
     ''')
     
@@ -99,8 +95,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             quiz_id INTEGER NOT NULL,
-            sr_no TEXT NOT NULL,
             student_name TEXT NOT NULL,
+            sr_no TEXT NOT NULL,
             question_id INTEGER NOT NULL,
             question_text TEXT NOT NULL,
             selected_option TEXT,
@@ -115,22 +111,22 @@ def init_db():
     default_start = now_time.strftime("%Y-%m-%d %H:%M")
     default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
     
-    # Demo Students
+    # Demo Students (Name, SR No)
     c.execute('''
-        INSERT OR IGNORE INTO master_students (sr_no, student_name, class_name, password)
+        INSERT OR IGNORE INTO master_students (student_name, sr_no)
         VALUES 
-        ('101', 'Aman Verma', 'Class 11', '101'),
-        ('102', 'Rohan Sharma', 'Class 11', '102'),
-        ('103', 'Shashank Verma', 'Class 11', '103'),
-        ('201', 'Abhishek Gupta', 'Class 12', '201'),
-        ('202', 'Priya Singh', 'Class 12', '202')
+        ('Aman Verma', '101'),
+        ('Rohan Sharma', '102'),
+        ('Shashank Verma', '103'),
+        ('Abhishek Gupta', '201'),
+        ('Priya Singh', '202')
     ''')
     
     # Demo Quizzes
     c.execute('''
-        INSERT OR IGNORE INTO quizzes (quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', ("Class 11 - Physics Periodic Test", "Class 11", 15, default_start, default_end, 1))
+        INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+        VALUES (?, ?, ?, ?, ?)
+    ''', ("Class 11 - Physics Periodic Test", 15, default_start, default_end, 1))
     
     c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Periodic Test",))
     row1 = c.fetchone()
@@ -147,9 +143,9 @@ def init_db():
             ])
 
     c.execute('''
-        INSERT OR IGNORE INTO quizzes (quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', ("Class 12 - Physics Board Mock", "Class 12", 20, default_start, default_end, 1))
+        INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+        VALUES (?, ?, ?, ?, ?)
+    ''', ("Class 12 - Physics Board Mock", 20, default_start, default_end, 1))
     
     c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 12 - Physics Board Mock",))
     row2 = c.fetchone()
@@ -183,15 +179,8 @@ def get_questions_by_quiz(quiz_id):
     conn.close()
     return df
 
-def get_distinct_classes():
-    conn = get_db()
-    df = pd.read_sql_query("SELECT DISTINCT class_name FROM master_students", conn)
-    conn.close()
-    classes = [str(c).strip() for c in df['class_name'].tolist() if str(c).strip()]
-    return classes if classes else ["Class 11", "Class 12"]
-
 # Live Real-time Timer & Anti-Cheating Script
-def inject_live_timer_and_security(remaining_seconds, quiz_id, sr_no):
+def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     timer_js = f"""
     <div id="sticky-timer-box" style="
         position: fixed; 
@@ -215,7 +204,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, sr_no):
     let timeLeft = {int(remaining_seconds)};
     let display = document.getElementById('timer-display');
     let switchCountElem = document.getElementById('switch-count');
-    let tabSwitches = sessionStorage.getItem('tab_switches_{quiz_id}_{sr_no}') || 0;
+    let tabSwitches = sessionStorage.getItem('tab_switches_{quiz_id}_{student_name}') || 0;
     switchCountElem.innerHTML = tabSwitches;
 
     function updateTimer() {{
@@ -242,7 +231,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, sr_no):
     // Tab Switch Detection & Warning
     window.addEventListener('blur', function() {{
         tabSwitches++;
-        sessionStorage.setItem('tab_switches_{quiz_id}_{sr_no}', tabSwitches);
+        sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
         switchCountElem.innerHTML = tabSwitches;
         
         alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detect hua hai! Bar-bar tab badalne par test auto-submit ho jayega.');
@@ -313,8 +302,8 @@ if selected_portal == "⚙️ Admin Control Center":
     quizzes_df = get_all_quizzes()
     
     admin_tab = st.selectbox("Select Management Section:", [
-        "👥 Master Student Directory (Upload Once with SR No & Class)", 
-        "📚 Create & Manage Quizzes (Class Specific & Edit Date/Time)", 
+        "👥 Master Student Directory (Upload Excel: Name + SR No)", 
+        "📚 Create & Manage Quizzes (Edit Date/Time & Controls)", 
         "📝 Question Bank (Excel/Manual)",
         "📊 Student Results & Delete Controls", 
         "💾 Full Database Backup & Restore (Excel)"
@@ -322,88 +311,80 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # --- SECTION 1: MASTER STUDENT DIRECTORY (ONE-TIME UPLOAD) ---
-    if admin_tab == "👥 Master Student Directory (Upload Once with SR No & Class)":
-        st.subheader("👥 Master Student Directory")
+    # --- SECTION 1: MASTER STUDENT DIRECTORY (2 COLUMNS EXCEL) ---
+    if admin_tab == "👥 Master Student Directory (Upload Excel: Name + SR No)":
+        st.subheader("👥 Master Student Directory (Upload Once)")
         st.markdown("""
-        Ek baar yahan sabhi students ki Excel list upload kar dein. **Har naye quiz me alag se list daalne ki zaroorat nahi padegi.**
-        - Student ka **Password by default uska `SR No`** rahega.
-        - Excel columns format: **`sr_no`**, **`name`**, **`class`**, **`password`** (optional).
+        Excel file me **sirf 2 Columns** hone chahiye:
+        - Column 1: **`name`** (Student ka poora naam)
+        - Column 2: **`sr_no`** (Student ka SR No / Roll No - **Yahi uska Login Password hoga**)
         """)
         
-        with st.expander("📂 Bulk Upload Master Students Directory via Excel / CSV", expanded=True):
-            uploaded_master_stu = st.file_uploader("Upload Master Students Excel (.xlsx / .csv):", type=["xlsx", "csv"])
+        with st.expander("📂 Bulk Upload Master Students Excel / CSV (2 Columns)", expanded=True):
+            uploaded_master_stu = st.file_uploader("Upload Excel (.xlsx / .csv):", type=["xlsx", "csv"])
             if uploaded_master_stu:
                 try:
                     df = pd.read_csv(uploaded_master_stu) if uploaded_master_stu.name.endswith(".csv") else pd.read_excel(uploaded_master_stu)
                     df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
                     
-                    # Detect columns
-                    sr_col = next((c for c in df.columns if c in ["sr_no", "srno", "roll_no", "rollno", "id"]), df.columns[0])
-                    name_col = next((c for c in df.columns if c in ["name", "student_name", "student"]), df.columns[1] if len(df.columns) > 1 else df.columns[0])
-                    class_col = next((c for c in df.columns if c in ["class", "class_name", "standard", "grade"]), df.columns[2] if len(df.columns) > 2 else None)
-                    pass_col = next((c for c in df.columns if c in ["password", "pass", "pin"]), None)
+                    # Detect name and sr_no columns
+                    name_col = next((c for c in df.columns if c in ["name", "student_name", "student"]), df.columns[0])
+                    sr_col = next((c for c in df.columns if c in ["sr_no", "srno", "roll_no", "rollno", "id", "password"]), df.columns[1] if len(df.columns) > 1 else df.columns[0])
                     
-                    st.write("File Preview:")
-                    st.dataframe(df.head(5))
+                    st.write("File Preview (First 5 Rows):")
+                    st.dataframe(df[[name_col, sr_col]].head(5))
                     
                     if st.button("🚀 Import All Students to Master Directory"):
                         conn = get_db()
                         cur = conn.cursor()
                         added_cnt = 0
                         for _, r in df.iterrows():
-                            s_sr = str(r[sr_col]).strip() if pd.notna(r[sr_col]) else ""
                             s_name = str(r[name_col]).strip() if pd.notna(r[name_col]) else ""
-                            s_class = str(r[class_col]).strip() if (class_col and pd.notna(r[class_col])) else "Class 11"
-                            s_pass = str(r[pass_col]).strip() if (pass_col and pd.notna(r[pass_col])) else s_sr  # Default password = SR No
+                            s_sr = str(r[sr_col]).strip() if pd.notna(r[sr_col]) else ""
                             
-                            if s_sr and s_name:
+                            if s_name and s_sr:
                                 try:
                                     cur.execute('''
-                                        INSERT INTO master_students (sr_no, student_name, class_name, password)
-                                        VALUES (?, ?, ?, ?)
-                                        ON CONFLICT(sr_no) DO UPDATE SET student_name=excluded.student_name, class_name=excluded.class_name, password=excluded.password
-                                    ''', (s_sr, s_name, s_class, s_pass))
+                                        INSERT INTO master_students (student_name, sr_no)
+                                        VALUES (?, ?)
+                                        ON CONFLICT(student_name) DO UPDATE SET sr_no=excluded.sr_no
+                                    ''', (s_name, s_sr))
                                     added_cnt += 1
                                 except Exception:
                                     pass
                         conn.commit()
                         conn.close()
-                        st.success(f"Successfully {added_cnt} students Master Directory me add/update ho gaye!")
+                        st.success(f"Successfully {added_cnt} students add/update ho gaye!")
                         time.sleep(1)
                         st.rerun()
                 except Exception as e:
                     st.error(f"Error reading file: {e}")
 
-        # Manual Single Student Add
         with st.expander("➕ Add Single Student Manually"):
             with st.form("manual_student_form"):
-                m_sr = st.text_input("SR No / Roll No:")
                 m_name = st.text_input("Student Name:")
-                m_class = st.text_input("Class (e.g., Class 11 / Class 12):", value="Class 11")
-                m_pwd = st.text_input("Password (Leave blank to use SR No as password):", type="password")
+                m_sr = st.text_input("SR No (Student Login Password):")
                 
-                if st.form_submit_button("Save Student to Master Directory"):
-                    if m_sr and m_name and m_class:
-                        final_p = m_pwd.strip() if m_pwd.strip() else m_sr.strip()
+                if st.form_submit_button("Save Student"):
+                    if m_name and m_sr:
                         conn = get_db()
                         conn.execute('''
-                            INSERT INTO master_students (sr_no, student_name, class_name, password)
-                            VALUES (?, ?, ?, ?)
-                            ON CONFLICT(sr_no) DO UPDATE SET student_name=?, class_name=?, password=?
-                        ''', (m_sr.strip(), m_name.strip(), m_class.strip(), final_p, m_name.strip(), m_class.strip(), final_p))
+                            INSERT INTO master_students (student_name, sr_no)
+                            VALUES (?, ?)
+                            ON CONFLICT(student_name) DO UPDATE SET sr_no=?
+                        ''', (m_name.strip(), m_sr.strip(), m_sr.strip()))
                         conn.commit()
                         conn.close()
                         st.success(f"Student '{m_name}' add ho gaya!")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("Sabhi fields bharna compulsory hai.")
+                        st.error("Dono fields bharna zaroori hai.")
 
         st.markdown("---")
-        st.write("### Current Master Student Directory")
+        st.write("### Current Registered Students List")
         conn = get_db()
-        master_df = pd.read_sql_query("SELECT sr_no AS 'SR No', student_name AS 'Name', class_name AS 'Class', password AS 'Password' FROM master_students ORDER BY class_name, sr_no", conn)
+        master_df = pd.read_sql_query("SELECT student_name AS 'Student Name', sr_no AS 'SR No (Password)' FROM master_students ORDER BY student_name", conn)
         conn.close()
         
         if master_df.empty:
@@ -413,29 +394,24 @@ if selected_portal == "⚙️ Admin Control Center":
             st.dataframe(master_df, use_container_width=True)
             
             c_del1, c_del2 = st.columns([3, 1])
-            del_sr_selected = c_del1.selectbox("Select Student SR No to Delete:", master_df['SR No'].tolist())
-            if c_del2.button(f"🗑️ Delete Student ({del_sr_selected})"):
+            del_student_selected = c_del1.selectbox("Select Student to Delete:", master_df['Student Name'].tolist())
+            if c_del2.button(f"🗑️ Delete Student"):
                 conn = get_db()
-                conn.execute("DELETE FROM master_students WHERE sr_no = ?", (del_sr_selected,))
+                conn.execute("DELETE FROM master_students WHERE student_name = ?", (del_student_selected,))
                 conn.commit()
                 conn.close()
-                st.warning(f"Student SR No '{del_sr_selected}' delete ho gaya.")
+                st.warning(f"Student '{del_student_selected}' delete ho gaya.")
                 time.sleep(1)
                 st.rerun()
 
     # --- SECTION 2: CREATE & MANAGE QUIZZES ---
-    elif admin_tab == "📚 Create & Manage Quizzes (Class Specific & Edit Date/Time)":
-        st.subheader("Manage Quizzes & Target Class")
+    elif admin_tab == "📚 Create & Manage Quizzes (Edit Date/Time & Controls)":
+        st.subheader("Manage Quizzes, Timings & Deletions")
         
-        avail_classes = get_distinct_classes()
-        if "All Classes" not in avail_classes:
-            avail_classes.append("All Classes")
-
         # 1. Create New Quiz
         with st.expander("➕ Create New Quiz", expanded=False):
             with st.form("new_quiz_form"):
-                q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Unit 1):")
-                target_cls = st.selectbox("Target Class (Sirf is class ke bachche login kar sakenge):", avail_classes)
+                q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Periodic Test):")
                 q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
                 
                 c_d1, c_d2 = st.columns(2)
@@ -454,9 +430,9 @@ if selected_portal == "⚙️ Admin Control Center":
                             conn = get_db()
                             c = conn.cursor()
                             c.execute('''
-                                INSERT INTO quizzes (quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active)
-                                VALUES (?, ?, ?, ?, ?, 1)
-                            ''', (q_title, target_cls, q_dur, start_str, end_str))
+                                INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+                                VALUES (?, ?, ?, ?, 1)
+                            ''', (q_title, q_dur, start_str, end_str))
                             conn.commit()
                             conn.close()
                             st.success(f"Quiz '{q_title}' successfully ban gaya!")
@@ -465,9 +441,9 @@ if selected_portal == "⚙️ Admin Control Center":
                         except sqlite3.IntegrityError:
                             st.error("Is naam se quiz pehle se bana hua hai.")
                     else:
-                        st.error("Quiz title bharna compulsory hai.")
+                        st.error("Quiz title bharna zaroori hai.")
 
-        # 2. Edit Existing Quiz Details (Date, Time, Duration, Class)
+        # 2. Edit Existing Quiz Details (Date, Time, Duration)
         with st.expander("✏️ Edit Date, Time & Details of Existing Quiz", expanded=True):
             if quizzes_df.empty:
                 st.info("Pehle koi Quiz create karein.")
@@ -489,8 +465,6 @@ if selected_portal == "⚙️ Admin Control Center":
 
                 with st.form(f"edit_quiz_form_{edit_q_id}"):
                     new_edit_title = st.text_input("Quiz Title:", value=q_to_edit['quiz_title'])
-                    cur_cls_idx = avail_classes.index(q_to_edit['target_class']) if q_to_edit['target_class'] in avail_classes else 0
-                    new_edit_cls = st.selectbox("Target Class:", avail_classes, index=cur_cls_idx)
                     new_edit_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=int(q_to_edit['duration_minutes']))
                     
                     ec1, ec2 = st.columns(2)
@@ -499,7 +473,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     new_e_date = ec2.date_input("End Date (IST):", value=cur_e_dt.date())
                     new_e_time = ec2.time_input("End Time (IST):", value=cur_e_dt.time())
                     
-                    btn_update_quiz = st.form_submit_button("💾 Save Updated Date, Time & Details", type="primary")
+                    btn_update_quiz = st.form_submit_button("💾 Save Updated Date & Time", type="primary")
                     if btn_update_quiz:
                         up_start_str = f"{new_s_date} {new_s_time.strftime('%H:%M')}"
                         up_end_str = f"{new_e_date} {new_e_time.strftime('%H:%M')}"
@@ -507,9 +481,9 @@ if selected_portal == "⚙️ Admin Control Center":
                         conn = get_db()
                         conn.execute('''
                             UPDATE quizzes 
-                            SET quiz_title = ?, target_class = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?
+                            SET quiz_title = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?
                             WHERE id = ?
-                        ''', (new_edit_title, new_edit_cls, new_edit_dur, up_start_str, up_end_str, edit_q_id))
+                        ''', (new_edit_title, new_edit_dur, up_start_str, up_end_str, edit_q_id))
                         conn.commit()
                         conn.close()
                         st.success(f"'{new_edit_title}' successfully update ho gaya!")
@@ -521,7 +495,7 @@ if selected_portal == "⚙️ Admin Control Center":
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
-                    st.markdown(f"**{r['quiz_title']}** | Target: `{r['target_class']}` | Duration: `{r['duration_minutes']} mins` | Status: `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
+                    st.markdown(f"**{r['quiz_title']}** | Duration: `{r['duration_minutes']} mins` | Status: `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
                     st.markdown(f"🕒 **Valid From (IST):** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
                     col_q1, col_q2, col_q3 = st.columns([1, 1.5, 1])
@@ -562,7 +536,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.info("Pehle ek Quiz create karein.")
         else:
             quiz_options = {row['quiz_title']: row['id'] for _, row in quizzes_df.iterrows()}
-            sel_q_title = st.selectbox("Select Quiz / Class:", list(quiz_options.keys()), key="q_quiz")
+            sel_q_title = st.selectbox("Select Quiz:", list(quiz_options.keys()), key="q_quiz")
             sel_q_id = quiz_options[sel_q_title]
             
             with st.expander("📂 Bulk Upload Questions via Excel/CSV", expanded=True):
@@ -613,13 +587,13 @@ if selected_portal == "⚙️ Admin Control Center":
             st.info("Pehle ek Quiz create karein.")
         else:
             quiz_options = {row['quiz_title']: row['id'] for _, row in quizzes_df.iterrows()}
-            sel_q_title = st.selectbox("Select Quiz Class to View Results:", list(quiz_options.keys()))
+            sel_q_title = st.selectbox("Select Quiz to View Results:", list(quiz_options.keys()))
             sel_q_id = quiz_options[sel_q_title]
             
             conn = get_db()
             try:
                 subs_df = pd.read_sql_query(
-                    "SELECT sr_no, student_name, class_name, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY id DESC", 
+                    "SELECT student_name, sr_no, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY id DESC", 
                     conn, params=(sel_q_id,)
                 )
             except Exception:
@@ -650,31 +624,31 @@ if selected_portal == "⚙️ Admin Control Center":
                 
                 st.divider()
                 st.write("### 🖨️ View, Print or Delete Individual Student Answer Sheet")
-                student_display_list = [f"{r['sr_no']} - {r['student_name']}" for _, r in subs_df.iterrows()]
+                student_display_list = [f"{r['student_name']} (SR: {r['sr_no']})" for _, r in subs_df.iterrows()]
                 
                 c_sel1, c_sel2 = st.columns([3, 1])
                 selected_display = c_sel1.selectbox("Select Student:", student_display_list)
-                selected_sr = selected_display.split(" - ")[0] if selected_display else ""
+                selected_name = selected_display.split(" (SR: ")[0] if selected_display else ""
                 
                 if c_sel2.button(f"🗑️ Delete Test"):
                     conn = get_db()
-                    conn.execute("DELETE FROM submissions WHERE quiz_id = ? AND sr_no = ?", (sel_q_id, selected_sr))
-                    conn.execute("DELETE FROM student_responses WHERE quiz_id = ? AND sr_no = ?", (sel_q_id, selected_sr))
+                    conn.execute("DELETE FROM submissions WHERE quiz_id = ? AND student_name = ?", (sel_q_id, selected_name))
+                    conn.execute("DELETE FROM student_responses WHERE quiz_id = ? AND student_name = ?", (sel_q_id, selected_name))
                     conn.commit()
                     conn.close()
-                    st.warning(f"Student SR No '{selected_sr}' ka response delete kar diya gaya.")
+                    st.warning(f"Student '{selected_name}' ka response delete kar diya gaya.")
                     time.sleep(1)
                     st.rerun()
                 
-                if selected_sr:
+                if selected_name:
                     conn = get_db()
                     ans_df = pd.read_sql_query(
-                        "SELECT question_text, selected_option, correct_option, is_correct, recorded_at FROM student_responses WHERE quiz_id = ? AND sr_no = ?", 
-                        conn, params=(sel_q_id, selected_sr)
+                        "SELECT question_text, selected_option, correct_option, is_correct, recorded_at FROM student_responses WHERE quiz_id = ? AND student_name = ?", 
+                        conn, params=(sel_q_id, selected_name)
                     )
                     student_summary = conn.execute(
-                        "SELECT sr_no, student_name, class_name, score, total_questions, tab_switches, submitted_at FROM submissions WHERE quiz_id = ? AND sr_no = ?", 
-                        (sel_q_id, selected_sr)
+                        "SELECT student_name, sr_no, score, total_questions, tab_switches, submitted_at FROM submissions WHERE quiz_id = ? AND student_name = ?", 
+                        (sel_q_id, selected_name)
                     ).fetchone()
                     conn.close()
                     
@@ -683,7 +657,7 @@ if selected_portal == "⚙️ Admin Control Center":
                         <h2 style="text-align: center; text-transform: uppercase;">Official Assessment Report ({sel_q_title})</h2>
                         <table style="width: 100%; margin-bottom: 20px; font-size: 15px;">
                             <tr>
-                                <td><strong>SR No:</strong> {student_summary['sr_no']} | <strong>Name:</strong> {student_summary['student_name']} ({student_summary['class_name']})</td>
+                                <td><strong>Student Name:</strong> {student_summary['student_name']} | <strong>SR No:</strong> {student_summary['sr_no']}</td>
                                 <td style="text-align: right;"><strong>Submitted At:</strong> {student_summary['submitted_at']}</td>
                             </tr>
                             <tr>
@@ -764,14 +738,14 @@ if selected_portal == "⚙️ Admin Control Center":
                     if 'Master_Students' in excel_file.sheet_names:
                         df_stu = pd.read_excel(excel_file, sheet_name='Master_Students')
                         for _, r in df_stu.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO master_students (id, sr_no, student_name, class_name, password) VALUES (?, ?, ?, ?, ?)",
-                                        (r['id'], str(r['sr_no']), str(r['student_name']), str(r['class_name']), str(r['password'])))
+                            cur.execute("INSERT OR REPLACE INTO master_students (id, student_name, sr_no) VALUES (?, ?, ?)",
+                                        (r['id'], str(r['student_name']), str(r['sr_no'])))
                     
                     if 'Quizzes' in excel_file.sheet_names:
                         df_q = pd.read_excel(excel_file, sheet_name='Quizzes')
                         for _, r in df_q.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO quizzes (id, quiz_title, target_class, duration_minutes, start_datetime, end_datetime, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_title'], r['target_class'], r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
+                            cur.execute("INSERT OR REPLACE INTO quizzes (id, quiz_title, duration_minutes, start_datetime, end_datetime, is_active) VALUES (?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_title'], r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
                     
                     if 'Questions' in excel_file.sheet_names:
                         df_ques = pd.read_excel(excel_file, sheet_name='Questions')
@@ -782,8 +756,14 @@ if selected_portal == "⚙️ Admin Control Center":
                     if 'Submissions' in excel_file.sheet_names:
                         df_subs = pd.read_excel(excel_file, sheet_name='Submissions')
                         for _, r in df_subs.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO submissions (id, quiz_id, sr_no, student_name, class_name, score, total_questions, tab_switches, status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r['quiz_id'], str(r['sr_no']), r['student_name'], r['class_name'], r['score'], r['total_questions'], r['tab_switches'], r['status'], r['submitted_at']))
+                            cur.execute("INSERT OR REPLACE INTO submissions (id, quiz_id, student_name, sr_no, score, total_questions, tab_switches, status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_id'], r['student_name'], str(r['sr_no']), r['score'], r['total_questions'], r['tab_switches'], r['status'], r['submitted_at']))
+                    
+                    if 'Responses' in excel_file.sheet_names:
+                        df_resp = pd.read_excel(excel_file, sheet_name='Responses')
+                        for _, r in df_resp.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO student_responses (id, quiz_id, student_name, sr_no, question_id, question_text, selected_option, correct_option, is_correct, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_id'], r['student_name'], str(r['sr_no']), r['question_id'], r['question_text'], r['selected_option'], r['correct_option'], r['is_correct'], r['recorded_at']))
                     
                     conn.commit()
                     conn.close()
@@ -794,15 +774,13 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.error(f"Restore failed: {e}")
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL (SR No & Password Login)
+# 5. STUDENT EXAM PORTAL (Name + SR No Password Login)
 # ==========================================
 else:
-    if "student_sr" not in st.session_state:
-        st.session_state.student_sr = None
     if "student_name" not in st.session_state:
         st.session_state.student_name = None
-    if "student_class" not in st.session_state:
-        st.session_state.student_class = None
+    if "student_sr" not in st.session_state:
+        st.session_state.student_sr = None
     if "selected_quiz_id" not in st.session_state:
         st.session_state.selected_quiz_id = None
     if "test_started" not in st.session_state:
@@ -818,29 +796,29 @@ else:
         st.stop()
 
     # Student Login Form
-    if not st.session_state.student_sr or not st.session_state.selected_quiz_id:
+    if not st.session_state.student_name or not st.session_state.selected_quiz_id:
         st.title("🎓 Student Examination Login Portal")
-        st.markdown("Apna Quiz select karein aur apna **SR No / Roll No** aur **Password (Aapka SR No)** darj karein.")
+        st.markdown("Apna Quiz select karein, apna **Registered Name** aur Password me apna **SR No** darj karein.")
         
-        quiz_opts = {f"{row['quiz_title']} ({row['target_class']})": row['id'] for _, row in active_quizzes.iterrows()}
+        quiz_opts = {row['quiz_title']: row['id'] for _, row in active_quizzes.iterrows()}
         
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("student_login_form"):
-                sel_quiz_label = st.selectbox("Select Quiz:", list(quiz_opts.keys()))
-                in_sr = st.text_input("Student SR No / Roll No:")
-                in_pwd = st.text_input("Password (Default: Aapka SR No):", type="password")
+                sel_quiz_title = st.selectbox("Select Quiz:", list(quiz_opts.keys()))
+                in_name = st.text_input("Student Name (Registered):", placeholder="Shashank Verma")
+                in_pwd = st.text_input("Password (Aapka SR No):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
                 
                 if submit_login:
-                    q_id = quiz_opts[sel_quiz_label]
-                    clean_sr = in_sr.strip()
+                    q_id = quiz_opts[sel_quiz_title]
+                    clean_name = in_name.strip()
                     clean_pwd = in_pwd.strip()
                     
                     conn = get_db()
                     q_data = conn.execute("SELECT * FROM quizzes WHERE id = ?", (q_id,)).fetchone()
-                    student_data = conn.execute("SELECT * FROM master_students WHERE sr_no = ?", (clean_sr,)).fetchone()
+                    student_data = conn.execute("SELECT * FROM master_students WHERE LOWER(student_name) = ?", (clean_name.lower(),)).fetchone()
                     conn.close()
                     
                     now_ist = get_ist_now().replace(tzinfo=None)
@@ -851,29 +829,25 @@ else:
                         start_dt = now_ist - timedelta(days=1)
                         end_dt = now_ist + timedelta(days=10)
                     
-                    if not clean_sr or not clean_pwd:
-                        st.error("Kripya SR No aur Password dono darj karein.")
+                    if not clean_name or not clean_pwd:
+                        st.error("Kripya Naam aur Password (SR No) dono darj karein.")
                     elif not student_data:
-                        st.error(f"❌ SR No '{clean_sr}' Master Student Directory me registered nahi hai!")
-                    elif student_data['password'] != clean_pwd:
-                        st.error("Galat Password! (Default password aapka SR No hai).")
-                    elif q_data['target_class'] != "All Classes" and student_data['class_name'] != q_data['target_class']:
-                        st.error(f"❌ Yeh exam '{q_data['target_class']}' ke liye hai. Aapki registered class '{student_data['class_name']}' hai.")
+                        st.error(f"❌ Student Name '{clean_name}' registered list me nahi hai!")
+                    elif str(student_data['sr_no']).strip() != clean_pwd:
+                        st.error("Galat Password! (Password aapka SR Number hai).")
                     elif now_ist < start_dt:
                         st.error(f"⏳ Exam abhi shuru nahi hua hai! Start Time (IST): {q_data['start_datetime']}")
                     elif now_ist > end_dt:
                         st.error(f"⏰ Exam ka samay samapt ho chuka hai! End Time (IST): {q_data['end_datetime']}")
                     else:
-                        st.session_state.student_sr = clean_sr
                         st.session_state.student_name = student_data['student_name']
-                        st.session_state.student_class = student_data['class_name']
+                        st.session_state.student_sr = str(student_data['sr_no'])
                         st.session_state.selected_quiz_id = q_id
                         st.rerun()
         st.stop()
 
-    student_sr = st.session_state.student_sr
     student_name = st.session_state.student_name
-    student_class = st.session_state.student_class
+    student_sr = st.session_state.student_sr
     quiz_id = st.session_state.selected_quiz_id
 
     conn = get_db()
@@ -881,13 +855,12 @@ else:
     conn.close()
 
     st.sidebar.markdown(f"**Candidate:** `{student_name}`")
-    st.sidebar.markdown(f"**SR No:** `{student_sr}` | **Class:** `{student_class}`")
+    st.sidebar.markdown(f"**SR No:** `{student_sr}`")
     st.sidebar.markdown(f"**Exam:** `{quiz_info['quiz_title']}`")
 
     if st.sidebar.button("Log Out"):
-        st.session_state.student_sr = None
         st.session_state.student_name = None
-        st.session_state.student_class = None
+        st.session_state.student_sr = None
         st.session_state.selected_quiz_id = None
         st.session_state.test_started = False
         st.session_state.start_timestamp = None
@@ -896,7 +869,7 @@ else:
     st.title(f"📝 {quiz_info['quiz_title']}")
 
     conn = get_db()
-    sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND sr_no = ?", (quiz_id, student_sr)).fetchone()
+    sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
     conn.close()
 
     if sub_check:
@@ -935,7 +908,7 @@ else:
         st.error("⏰ Time Up! Samay samapt ho gaya hai.")
         st.stop()
 
-    inject_live_timer_and_security(remaining, quiz_id, student_sr)
+    inject_live_timer_and_security(remaining, quiz_id, student_name)
 
     # Exam Form
     with st.form("exam_form"):
@@ -964,14 +937,14 @@ else:
                     score += 1
                     
                 cur.execute('''
-                    INSERT INTO student_responses (quiz_id, sr_no, student_name, question_id, question_text, selected_option, correct_option, is_correct, recorded_at)
+                    INSERT INTO student_responses (quiz_id, student_name, sr_no, question_id, question_text, selected_option, correct_option, is_correct, recorded_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (quiz_id, student_sr, student_name, q_id_num, row['question'], sel_opt if sel_opt else "Unattempted", correct_opt, is_correct, sub_time))
+                ''', (quiz_id, student_name, student_sr, q_id_num, row['question'], sel_opt if sel_opt else "Unattempted", correct_opt, is_correct, sub_time))
                 
             cur.execute('''
-                INSERT OR REPLACE INTO submissions (quiz_id, sr_no, student_name, class_name, score, total_questions, tab_switches, status, submitted_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, 'Completed', ?)
-            ''', (quiz_id, student_sr, student_name, student_class, score, len(questions_df), sub_time))
+                INSERT OR REPLACE INTO submissions (quiz_id, student_name, sr_no, score, total_questions, tab_switches, status, submitted_at)
+                VALUES (?, ?, ?, ?, ?, 0, 'Completed', ?)
+            ''', (quiz_id, student_name, student_sr, score, len(questions_df), sub_time))
             
             conn.commit()
             conn.close()
