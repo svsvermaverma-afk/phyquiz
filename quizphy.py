@@ -12,17 +12,19 @@ import streamlit.components.v1 as components
 # 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="Proctored Quiz Portal",
+    page_title="Multi-Class Proctored Quiz Portal",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_prod.db"
-STUDENTS_FILE_DEFAULT = "students.xlsx"
-QUESTIONS_FILE_DEFAULT = "questions.xlsx"
+DB_FILE = "master_quiz_system_prod_v13.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
+
+STUDENTS_FILE = "students.xlsx"
+Q11_FILE = "questions_11.xlsx"
+Q12_FILE = "questions_12.xlsx"
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -44,7 +46,7 @@ def clean_sr_no(sr_val):
     return sr_str
 
 # ==========================================
-# 2. BULLETPROOF DATABASE MANAGEMENT
+# 2. DATABASE INITIALIZATION & REPO AUTO-LOADER
 # ==========================================
 def get_db():
     conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
@@ -56,7 +58,7 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1. Master Student Directory
+    # 1. Master Students Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS master_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,7 +110,7 @@ def init_db():
         )
     ''')
     
-    # 5. Question-Wise Responses Table
+    # 5. Question Responses Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,21 +126,32 @@ def init_db():
         )
     ''')
     
-    # Default Quiz Setup
     now_time = get_ist_now() - timedelta(hours=1)
     default_start = now_time.strftime("%Y-%m-%d %H:%M")
     default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
     
+    # Initialize Default Quizzes
     c.execute('''
         INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, ?)
-    ''', ("Class 11 - Physics Periodic Test", 15, default_start, default_end, 1))
+        VALUES (?, ?, ?, ?, 1)
+    ''', ("Class 11 - Physics Exam", 15, default_start, default_end))
     
-    # -------------------------------------------------------------
-    # Auto-load repository/domain Excel files on every server boot
-    # -------------------------------------------------------------
-    # 1. Check & Load students.xlsx or students.csv from repo
-    for s_path in [STUDENTS_FILE_DEFAULT, "students.csv"]:
+    c.execute('''
+        INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+        VALUES (?, ?, ?, ?, 1)
+    ''', ("Class 12 - Physics Exam", 20, default_start, default_end))
+    
+    # Get Quiz IDs
+    c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Exam",))
+    q11_row = c.fetchone()
+    q11_id = q11_row[0] if q11_row else 1
+    
+    c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 12 - Physics Exam",))
+    q12_row = c.fetchone()
+    q12_id = q12_row[0] if q12_row else 2
+
+    # Auto Load Students from Repo File (students.xlsx / students.csv)
+    for s_path in [STUDENTS_FILE, "students.csv"]:
         if os.path.exists(s_path):
             try:
                 s_df = pd.read_csv(s_path) if s_path.endswith(".csv") else pd.read_excel(s_path)
@@ -158,33 +171,37 @@ def init_db():
             except Exception:
                 pass
 
-    # 2. Check & Load questions.xlsx or questions.csv from repo
-    for q_path in [QUESTIONS_FILE_DEFAULT, "questions.csv"]:
-        if os.path.exists(q_path):
+    # Auto Load Class 11 Questions from Repo (questions_11.xlsx / questions_11.csv)
+    for q11_path in [Q11_FILE, "questions_11.csv"]:
+        if os.path.exists(q11_path):
             try:
-                q_df = pd.read_csv(q_path) if q_path.endswith(".csv") else pd.read_excel(q_path)
-                q_df.columns = [str(col).strip().lower().replace(" ", "_") for col in q_df.columns]
-                
-                # Fetch first active quiz
-                c.execute("SELECT id FROM quizzes ORDER BY id ASC LIMIT 1")
-                first_q = c.fetchone()
-                if first_q:
-                    q_id_target = first_q[0]
-                    c.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (q_id_target,))
-                    if c.fetchone()[0] == 0:
-                        for _, qr in q_df.iterrows():
+                df11 = pd.read_csv(q11_path) if q11_path.endswith(".csv") else pd.read_excel(q11_path)
+                df11.columns = [str(col).strip().lower().replace(" ", "_") for col in df11.columns]
+                c.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (q11_id,))
+                if c.fetchone()[0] == 0:
+                    for _, row in df11.iterrows():
+                        if pd.notna(row["question"]) and pd.notna(row["correct_option"]):
                             c.execute('''
                                 INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
                                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ''', (
-                                q_id_target,
-                                str(qr["question"]).strip(),
-                                str(qr["option_a"]).strip(),
-                                str(qr["option_b"]).strip(),
-                                str(qr["option_c"]).strip(),
-                                str(qr["option_d"]).strip(),
-                                str(qr["correct_option"]).strip()
-                            ))
+                            ''', (q11_id, str(row["question"]).strip(), str(row["option_a"]).strip(), str(row["option_b"]).strip(), str(row["option_c"]).strip(), str(row["option_d"]).strip(), str(row["correct_option"]).strip()))
+            except Exception:
+                pass
+
+    # Auto Load Class 12 Questions from Repo (questions_12.xlsx / questions_12.csv)
+    for q12_path in [Q12_FILE, "questions_12.csv"]:
+        if os.path.exists(q12_path):
+            try:
+                df12 = pd.read_csv(q12_path) if q12_path.endswith(".csv") else pd.read_excel(q12_path)
+                df12.columns = [str(col).strip().lower().replace(" ", "_") for col in df12.columns]
+                c.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (q12_id,))
+                if c.fetchone()[0] == 0:
+                    for _, row in df12.iterrows():
+                        if pd.notna(row["question"]) and pd.notna(row["correct_option"]):
+                            c.execute('''
+                                INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ''', (q12_id, str(row["question"]).strip(), str(row["option_a"]).strip(), str(row["option_b"]).strip(), str(row["option_c"]).strip(), str(row["option_d"]).strip(), str(row["correct_option"]).strip()))
             except Exception:
                 pass
 
@@ -328,7 +345,7 @@ if selected_portal == "⚙️ Admin Control Center":
     
     admin_tab = st.selectbox("Select Management Section:", [
         "👥 Master Student Directory (Excel/Manual)", 
-        "📚 Create & Manage Quizzes (Edit Date/Time & Controls)", 
+        "📚 Create & Manage Quizzes (Class 11 & 12 Controls)", 
         "📝 Question Bank (Excel/Manual)",
         "📊 Student Results & Delete Controls", 
         "💾 Full Database Backup & Restore (Excel)"
@@ -340,8 +357,7 @@ if selected_portal == "⚙️ Admin Control Center":
     if admin_tab == "👥 Master Student Directory (Excel/Manual)":
         st.subheader("👥 Master Student Directory")
         st.markdown("""
-        **Tip:** Agar aap GitHub repo me **`students.xlsx`** naam se file upload kar denge, to redeploy hone par bhi data kabhi delete nahi hoga.
-        - Columns: **`name`** (Student Name) aur **`sr_no`** (SR Number as Password).
+        **Tip:** Repo me **`students.xlsx`** (`name`, `sr_no`) upload karne par students permanent load rahenge.
         """)
         
         with st.expander("📂 Bulk Upload via Web Interface", expanded=True):
@@ -397,7 +413,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.dataframe(master_df, use_container_width=True)
 
     # --- SECTION 2: CREATE & MANAGE QUIZZES ---
-    elif admin_tab == "📚 Create & Manage Quizzes (Edit Date/Time & Controls)":
+    elif admin_tab == "📚 Create & Manage Quizzes (Class 11 & 12 Controls)":
         st.subheader("Manage Quizzes, Timings & Deletions")
         
         with st.expander("➕ Create New Quiz", expanded=False):
@@ -441,7 +457,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
                     col_q1, col_q2, col_q3 = st.columns([1, 1.5, 1])
-                    if col_q1.button(f"Toggle Active", key=f"tog_{r['id']}"):
+                    if col_q1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
                         conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
@@ -473,7 +489,7 @@ if selected_portal == "⚙️ Admin Control Center":
     # --- SECTION 3: QUESTION BANK ---
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Manage Question Bank")
-        st.markdown("**Tip:** Repo me **`questions.xlsx`** upload karne par questions permanent rahenge.")
+        st.markdown("**Tip:** Repo me **`questions_11.xlsx`** aur **`questions_12.xlsx`** upload karne par dono classes ke questions automatic load ho jayenge.")
         
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
@@ -621,6 +637,18 @@ if selected_portal == "⚙️ Admin Control Center":
                             cur.execute("INSERT OR REPLACE INTO questions (id, quiz_id, question, option_a, option_b, option_c, option_d, correct_option) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                         (r['id'], r['quiz_id'], r['question'], r['option_a'], r['option_b'], r['option_c'], r['option_d'], r['correct_option']))
                     
+                    if 'Submissions' in excel_file.sheet_names:
+                        df_subs = pd.read_excel(excel_file, sheet_name='Submissions')
+                        for _, r in df_subs.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO submissions (id, quiz_id, student_name, sr_no, score, total_questions, tab_switches, status, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_id'], clean_text(r['student_name']), clean_sr_no(r['sr_no']), r['score'], r['total_questions'], r['tab_switches'], r['status'], r['submitted_at']))
+                    
+                    if 'Responses' in excel_file.sheet_names:
+                        df_resp = pd.read_excel(excel_file, sheet_name='Responses')
+                        for _, r in df_resp.iterrows():
+                            cur.execute("INSERT OR REPLACE INTO student_responses (id, quiz_id, student_name, sr_no, question_id, question_text, selected_option, correct_option, is_correct, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r['quiz_id'], clean_text(r['student_name']), clean_sr_no(r['sr_no']), r['question_id'], r['question_text'], r['selected_option'], r['correct_option'], r['is_correct'], r['recorded_at']))
+                    
                     conn.commit()
                     conn.close()
                     st.success("✅ Sara data successfully restore ho gaya!")
@@ -689,7 +717,7 @@ else:
                     if not clean_input_name or not clean_input_pwd:
                         st.error("Kripya Naam aur Password (SR No) dono darj karein.")
                     elif not student_data:
-                        st.error(f"❌ Student Name '{clean_input_name}' registered list me nahi mila!")
+                        st.error(f"❌ Student Name '{clean_input_name}' registered list me nahi mila! Kripya spelling check karein.")
                     elif clean_sr_no(student_data['sr_no']) != clean_input_pwd:
                         st.error("Galat Password! (Password aapka SR Number hai).")
                     elif now_ist < start_dt:
