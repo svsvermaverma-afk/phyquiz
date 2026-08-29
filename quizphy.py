@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_prod_v15.db"
+DB_FILE = "master_quiz_system_prod_v16.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -68,10 +68,12 @@ def init_db():
         )
     ''')
     
-    # 2. Quizzes Table
+    # 2. Quizzes Table (With Class and Topic)
     c.execute('''
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_class TEXT NOT NULL,
+            topic TEXT NOT NULL,
             quiz_title TEXT UNIQUE NOT NULL,
             duration_minutes INTEGER DEFAULT 15,
             start_datetime TEXT NOT NULL,
@@ -80,6 +82,16 @@ def init_db():
         )
     ''')
     
+    # Safe Auto-Migration for topic & target_class
+    try:
+        c.execute("ALTER TABLE quizzes ADD COLUMN target_class TEXT DEFAULT 'Class 11'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE quizzes ADD COLUMN topic TEXT DEFAULT 'General Physics'")
+    except sqlite3.OperationalError:
+        pass
+
     # 3. Questions Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
@@ -130,17 +142,18 @@ def init_db():
     default_start = now_time.strftime("%Y-%m-%d %H:%M")
     default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
     
-    # Default Initial Quizzes
+    # Initialize Default Quizzes
     c.execute('''
-        INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, 1)
-    ''', ("Class 11 - Physics Exam", 15, default_start, default_end))
+        INSERT OR IGNORE INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+    ''', ("Class 11", "Laws of Motion & Work Energy", "Class 11 - Physics Exam", 15, default_start, default_end))
     
     c.execute('''
-        INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, 1)
-    ''', ("Class 12 - Physics Exam", 20, default_start, default_end))
+        INSERT OR IGNORE INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+    ''', ("Class 12", "Electrostatics & Magnetism", "Class 12 - Physics Exam", 20, default_start, default_end))
     
+    # Get Quiz IDs
     c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Exam",))
     q11_row = c.fetchone()
     q11_id = q11_row[0] if q11_row else 1
@@ -149,7 +162,7 @@ def init_db():
     q12_row = c.fetchone()
     q12_id = q12_row[0] if q12_row else 2
 
-    # Auto Load Students from Repo File (students.xlsx / students.csv)
+    # Auto Load Students from Repo File
     for s_path in [STUDENTS_FILE, "students.csv"]:
         if os.path.exists(s_path):
             try:
@@ -170,7 +183,7 @@ def init_db():
             except Exception:
                 pass
 
-    # Auto Load Class 11 Questions from Repo (questions_11.xlsx / questions_11.csv)
+    # Auto Load Class 11 Questions from Repo
     for q11_path in [Q11_FILE, "questions_11.csv"]:
         if os.path.exists(q11_path):
             try:
@@ -187,7 +200,7 @@ def init_db():
             except Exception:
                 pass
 
-    # Auto Load Class 12 Questions from Repo (questions_12.xlsx / questions_12.csv)
+    # Auto Load Class 12 Questions from Repo
     for q12_path in [Q12_FILE, "questions_12.csv"]:
         if os.path.exists(q12_path):
             try:
@@ -343,7 +356,7 @@ if selected_portal == "⚙️ Admin Control Center":
     quizzes_df = get_all_quizzes()
     
     admin_tab = st.selectbox("Select Management Section:", [
-        "📚 Create & Manage Quizzes (Class 11 & 12 Controls)", 
+        "📚 Create & Manage Quizzes (Class & Topic Controls)", 
         "👥 Master Student Directory (Excel/Manual)", 
         "📝 Question Bank (Excel/Manual)",
         "📊 Student Results & Delete Controls", 
@@ -352,14 +365,18 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # --- SECTION 1: CREATE & MANAGE QUIZZES (WITH DIRECT DATE/TIME CHANGE BUTTONS) ---
-    if admin_tab == "📚 Create & Manage Quizzes (Class 11 & 12 Controls)":
+    # --- SECTION 1: CREATE & MANAGE QUIZZES (WITH TOPIC EDITING) ---
+    if admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
         st.subheader("Existing Quizzes List & Controls")
         
         # 1. Create New Quiz Expander
-        with st.expander("➕ Create New Quiz", expanded=False):
+        with st.expander("➕ Create New Quiz with Topic", expanded=False):
             with st.form("new_quiz_form"):
-                q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Unit 1):")
+                c_cls1, c_cls2 = st.columns(2)
+                target_class_choice = c_cls1.selectbox("Select Class:", ["Class 11", "Class 12", "Class 9", "Class 10", "Other"])
+                topic_name = c_cls2.text_input("Topic / Chapter Name (e.g., Kinematics):", value="Units & Measurement")
+                
+                q_title = st.text_input("Quiz Title (Auto or Custom):", value=f"{target_class_choice} - {topic_name}")
                 q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
                 
                 c_d1, c_d2 = st.columns(2)
@@ -373,14 +390,15 @@ if selected_portal == "⚙️ Admin Control Center":
                     start_str = f"{start_date} {start_time.strftime('%H:%M')}"
                     end_str = f"{end_date} {end_time.strftime('%H:%M')}"
                     c_title = clean_text(q_title)
+                    c_top = clean_text(topic_name)
                     if c_title:
                         try:
                             conn = get_db()
                             c = conn.cursor()
                             c.execute('''
-                                INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-                                VALUES (?, ?, ?, ?, 1)
-                            ''', (c_title, q_dur, start_str, end_str))
+                                INSERT INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+                                VALUES (?, ?, ?, ?, ?, ?, 1)
+                            ''', (target_class_choice, c_top, c_title, q_dur, start_str, end_str))
                             conn.commit()
                             conn.close()
                             st.success(f"Quiz '{c_title}' ban gaya!")
@@ -391,12 +409,15 @@ if selected_portal == "⚙️ Admin Control Center":
 
         st.markdown("---")
         
-        # 2. Existing Quizzes Display with Direct Inline Editing Buttons
+        # 2. Existing Quizzes Display with Topic & Date/Time Editing
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
                     st.markdown(f"### 📝 **{r['quiz_title']}**")
-                    st.markdown(f"**Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
+                    cls_val = r.get('target_class', 'Class 11')
+                    top_val = r.get('topic', 'General Physics')
+                    st.markdown(f"🏷️ **Class:** `{cls_val}` | 📖 **Topic:** `{top_val}`")
+                    st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
                     # Quick Control Buttons
@@ -429,8 +450,8 @@ if selected_portal == "⚙️ Admin Control Center":
                         time.sleep(1)
                         st.rerun()
 
-                    # Direct Date & Time Change Form for this specific Quiz
-                    with st.expander(f"📅 Change Date, Time & Duration for: {r['quiz_title']}", expanded=False):
+                    # Direct Topic, Class, Date & Time Change Form
+                    with st.expander(f"📅 Change Topic, Date, Time & Duration for: {r['quiz_title']}", expanded=False):
                         try:
                             cur_s_dt = datetime.strptime(r['start_datetime'], "%Y-%m-%d %H:%M")
                             cur_e_dt = datetime.strptime(r['end_datetime'], "%Y-%m-%d %H:%M")
@@ -439,6 +460,12 @@ if selected_portal == "⚙️ Admin Control Center":
                             cur_e_dt = get_ist_now() + timedelta(days=7)
 
                         with st.form(f"quick_edit_quiz_{r['id']}"):
+                            ce1, ce2 = st.columns(2)
+                            class_options = ["Class 11", "Class 12", "Class 9", "Class 10", "Other"]
+                            cur_cls_idx = class_options.index(cls_val) if cls_val in class_options else 0
+                            ed_cls = ce1.selectbox("Class:", class_options, index=cur_cls_idx, key=f"cls_{r['id']}")
+                            ed_topic = ce2.text_input("Topic / Chapter Name:", value=top_val, key=f"top_{r['id']}")
+                            
                             ed_title = st.text_input("Quiz Title:", value=r['quiz_title'], key=f"t_{r['id']}")
                             ed_dur = st.number_input("Exam Duration (Minutes):", min_value=1, max_value=300, value=int(r['duration_minutes']), key=f"d_{r['id']}")
                             
@@ -448,19 +475,19 @@ if selected_portal == "⚙️ Admin Control Center":
                             ed_e_date = c2.date_input("End Date (IST):", value=cur_e_dt.date(), key=f"ed_{r['id']}")
                             ed_e_time = c2.time_input("End Time (IST):", value=cur_e_dt.time(), key=f"et_{r['id']}")
                             
-                            if st.form_submit_button("💾 Save Updated Date & Time", type="primary"):
+                            if st.form_submit_button("💾 Save Updated Topic, Date & Time", type="primary"):
                                 new_start_str = f"{ed_s_date} {ed_s_time.strftime('%H:%M')}"
                                 new_end_str = f"{ed_e_date} {ed_e_time.strftime('%H:%M')}"
                                 
                                 conn = get_db()
                                 conn.execute('''
                                     UPDATE quizzes 
-                                    SET quiz_title = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?
+                                    SET target_class = ?, topic = ?, quiz_title = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?
                                     WHERE id = ?
-                                ''', (clean_text(ed_title), ed_dur, new_start_str, new_end_str, r['id']))
+                                ''', (ed_cls, clean_text(ed_topic), clean_text(ed_title), ed_dur, new_start_str, new_end_str, r['id']))
                                 conn.commit()
                                 conn.close()
-                                st.success(f"'{ed_title}' ki Date & Time successfully update ho gayi!")
+                                st.success(f"'{ed_title}' successfully update ho gaya!")
                                 time.sleep(1)
                                 st.rerun()
 
@@ -535,9 +562,9 @@ if selected_portal == "⚙️ Admin Control Center":
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
         else:
-            quiz_options = {row['quiz_title']: row['id'] for _, row in quizzes_df.iterrows()}
-            sel_q_title = st.selectbox("Select Quiz:", list(quiz_options.keys()), key="q_quiz")
-            sel_q_id = quiz_options[sel_q_title]
+            quiz_options = {f"[{r.get('target_class','Class 11')}] {r['quiz_title']} ({r.get('topic','General')})": r['id'] for _, r in quizzes_df.iterrows()}
+            sel_q_label = st.selectbox("Select Quiz:", list(quiz_options.keys()), key="q_quiz")
+            sel_q_id = quiz_options[sel_q_label]
             
             with st.expander("📂 Bulk Upload Questions via Web", expanded=True):
                 st.markdown("Columns: `question`, `option_a`, `option_b`, `option_c`, `option_d`, `correct_option`")
@@ -586,9 +613,9 @@ if selected_portal == "⚙️ Admin Control Center":
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
         else:
-            quiz_options = {row['quiz_title']: row['id'] for _, row in quizzes_df.iterrows()}
-            sel_q_title = st.selectbox("Select Quiz to View Results:", list(quiz_options.keys()))
-            sel_q_id = quiz_options[sel_q_title]
+            quiz_options = {f"[{r.get('target_class','Class 11')}] {r['quiz_title']} ({r.get('topic','General')})": r['id'] for _, r in quizzes_df.iterrows()}
+            sel_q_label = st.selectbox("Select Quiz to View Results:", list(quiz_options.keys()))
+            sel_q_id = quiz_options[sel_q_label]
             
             conn = get_db()
             try:
@@ -607,9 +634,9 @@ if selected_portal == "⚙️ Admin Control Center":
                 st.dataframe(subs_df, use_container_width=True)
                 
                 csv_data = subs_df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Download Results (CSV)", data=csv_data, file_name=f"{sel_q_title}_results.csv", mime="text/csv")
+                st.download_button("📥 Download Results (CSV)", data=csv_data, file_name=f"results_{sel_q_id}.csv", mime="text/csv")
                 
-                if st.button(f"🗑️ Clear ALL Submissions for {sel_q_title}", type="secondary"):
+                if st.button(f"🗑️ Clear ALL Submissions for this Quiz", type="secondary"):
                     conn = get_db()
                     conn.execute("DELETE FROM submissions WHERE quiz_id = ?", (sel_q_id,))
                     conn.execute("DELETE FROM student_responses WHERE quiz_id = ?", (sel_q_id,))
@@ -669,8 +696,8 @@ if selected_portal == "⚙️ Admin Control Center":
                     if 'Quizzes' in excel_file.sheet_names:
                         df_q = pd.read_excel(excel_file, sheet_name='Quizzes')
                         for _, r in df_q.iterrows():
-                            cur.execute("INSERT OR REPLACE INTO quizzes (id, quiz_title, duration_minutes, start_datetime, end_datetime, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-                                        (r['id'], clean_text(r['quiz_title']), r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
+                            cur.execute("INSERT OR REPLACE INTO quizzes (id, target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                        (r['id'], r.get('target_class', 'Class 11'), r.get('topic', 'General'), clean_text(r['quiz_title']), r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
                     
                     if 'Questions' in excel_file.sheet_names:
                         df_ques = pd.read_excel(excel_file, sheet_name='Questions')
@@ -723,21 +750,21 @@ else:
     # Student Login Form
     if not st.session_state.student_name or not st.session_state.selected_quiz_id:
         st.title("🎓 Student Examination Login Portal")
-        st.markdown("Apna Quiz select karein, apna **Registered Name** aur Password me apna **SR No** darj karein.")
+        st.markdown("Apna Quiz/Topic select karein, apna **Registered Name** aur Password me apna **SR No** darj karein.")
         
-        quiz_opts = {row['quiz_title']: row['id'] for _, row in active_quizzes.iterrows()}
+        quiz_opts = {f"[{row.get('target_class','Class 11')}] {row['quiz_title']} • (Topic: {row.get('topic','General')})": row['id'] for _, row in active_quizzes.iterrows()}
         
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("student_login_form"):
-                sel_quiz_title = st.selectbox("Select Quiz:", list(quiz_opts.keys()))
+                sel_quiz_label = st.selectbox("Select Quiz / Topic:", list(quiz_opts.keys()))
                 in_name = st.text_input("Student Name (Registered):", placeholder="Shashank Verma")
                 in_pwd = st.text_input("Password (Aapka SR No):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
                 
                 if submit_login:
-                    q_id = quiz_opts[sel_quiz_title]
+                    q_id = quiz_opts[sel_quiz_label]
                     clean_input_name = clean_text(in_name)
                     clean_input_pwd = clean_sr_no(in_pwd)
                     norm_input_name = clean_input_name.lower()
@@ -783,6 +810,7 @@ else:
     st.sidebar.markdown(f"**Candidate:** `{student_name}`")
     st.sidebar.markdown(f"**SR No:** `{student_sr}`")
     st.sidebar.markdown(f"**Exam:** `{quiz_info['quiz_title']}`")
+    st.sidebar.markdown(f"**Topic:** `{quiz_info.get('topic', 'General')}`")
 
     if st.sidebar.button("Log Out"):
         st.session_state.student_name = None
@@ -793,6 +821,7 @@ else:
         st.rerun()
 
     st.title(f"📝 {quiz_info['quiz_title']}")
+    st.markdown(f"##### 📖 Topic: **{quiz_info.get('topic', 'General')}** | Class: **{quiz_info.get('target_class', 'Class 11')}**")
 
     conn = get_db()
     sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
@@ -813,6 +842,7 @@ else:
         st.markdown("### 📌 Exam Guidelines & Anti-Cheat System:")
         st.markdown(f"""
         - **Student Name:** `{student_name}` (SR: `{student_sr}`)
+        - **Topic:** `{quiz_info.get('topic', 'General')}`
         - **Duration:** `{quiz_info['duration_minutes']} Minutes`
         - **Total Questions:** `{len(questions_df)}`
         - **Rules:**
