@@ -12,13 +12,13 @@ import streamlit.components.v1 as components
 # 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="Multi-Class Proctored Quiz Portal",
+    page_title="Proctored Quiz Portal",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_prod_v13.db"
+DB_FILE = "master_quiz_system_prod_v14.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -46,7 +46,7 @@ def clean_sr_no(sr_val):
     return sr_str
 
 # ==========================================
-# 2. DATABASE INITIALIZATION & REPO AUTO-LOADER
+# 2. DATABASE MANAGEMENT & AUTO-SYNC
 # ==========================================
 def get_db():
     conn = sqlite3.connect(DB_FILE, timeout=30.0, check_same_thread=False)
@@ -130,7 +130,7 @@ def init_db():
     default_start = now_time.strftime("%Y-%m-%d %H:%M")
     default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
     
-    # Initialize Default Quizzes
+    # Default Initial Quizzes
     c.execute('''
         INSERT OR IGNORE INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
         VALUES (?, ?, ?, ?, 1)
@@ -141,7 +141,6 @@ def init_db():
         VALUES (?, ?, ?, ?, 1)
     ''', ("Class 12 - Physics Exam", 20, default_start, default_end))
     
-    # Get Quiz IDs
     c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Exam",))
     q11_row = c.fetchone()
     q11_id = q11_row[0] if q11_row else 1
@@ -156,7 +155,7 @@ def init_db():
             try:
                 s_df = pd.read_csv(s_path) if s_path.endswith(".csv") else pd.read_excel(s_path)
                 s_df.columns = [str(col).strip().lower().replace(" ", "_") for col in s_df.columns]
-                n_col = next((col for col in s_df.columns if col in ["name", "student_name", "student"]), s_df.columns[0])
+                n_col = next((col for col in s_df.columns if col in ["name", "student_name", "student", "studentname"]), s_df.columns[0])
                 sr_col = next((col for col in s_df.columns if col in ["sr_no", "srno", "sr", "roll_no", "rollno", "id", "password"]), s_df.columns[1] if len(s_df.columns) > 1 else s_df.columns[0])
                 
                 for _, r in s_df.iterrows():
@@ -223,7 +222,7 @@ def get_questions_by_quiz(quiz_id):
     conn.close()
     return df
 
-# Anti-Cheating & Live Timer
+# Anti-Cheating & Live Timer Component
 def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     timer_js = f"""
     <div id="sticky-timer-box" style="
