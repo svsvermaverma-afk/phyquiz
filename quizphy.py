@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_prod_v14.db"
+DB_FILE = "master_quiz_system_prod_v15.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -343,8 +343,8 @@ if selected_portal == "⚙️ Admin Control Center":
     quizzes_df = get_all_quizzes()
     
     admin_tab = st.selectbox("Select Management Section:", [
-        "👥 Master Student Directory (Excel/Manual)", 
         "📚 Create & Manage Quizzes (Class 11 & 12 Controls)", 
+        "👥 Master Student Directory (Excel/Manual)", 
         "📝 Question Bank (Excel/Manual)",
         "📊 Student Results & Delete Controls", 
         "💾 Full Database Backup & Restore (Excel)"
@@ -352,8 +352,124 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # --- SECTION 1: MASTER STUDENTS ---
-    if admin_tab == "👥 Master Student Directory (Excel/Manual)":
+    # --- SECTION 1: CREATE & MANAGE QUIZZES (WITH DIRECT DATE/TIME CHANGE BUTTONS) ---
+    if admin_tab == "📚 Create & Manage Quizzes (Class 11 & 12 Controls)":
+        st.subheader("Existing Quizzes List & Controls")
+        
+        # 1. Create New Quiz Expander
+        with st.expander("➕ Create New Quiz", expanded=False):
+            with st.form("new_quiz_form"):
+                q_title = st.text_input("Quiz Title (e.g., Class 11 Physics Unit 1):")
+                q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
+                
+                c_d1, c_d2 = st.columns(2)
+                cur_ist = get_ist_now()
+                start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
+                start_time = c_d1.time_input("Start Time (IST):", value=(cur_ist - timedelta(minutes=10)).time())
+                end_date = c_d2.date_input("End Date (IST):", value=(cur_ist + timedelta(days=7)).date())
+                end_time = c_d2.time_input("End Time (IST):", value=cur_ist.time())
+                
+                if st.form_submit_button("Create Quiz"):
+                    start_str = f"{start_date} {start_time.strftime('%H:%M')}"
+                    end_str = f"{end_date} {end_time.strftime('%H:%M')}"
+                    c_title = clean_text(q_title)
+                    if c_title:
+                        try:
+                            conn = get_db()
+                            c = conn.cursor()
+                            c.execute('''
+                                INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+                                VALUES (?, ?, ?, ?, 1)
+                            ''', (c_title, q_dur, start_str, end_str))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Quiz '{c_title}' ban gaya!")
+                            time.sleep(1)
+                            st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.error("Yeh quiz pehle se bana hua hai.")
+
+        st.markdown("---")
+        
+        # 2. Existing Quizzes Display with Direct Inline Editing Buttons
+        if not quizzes_df.empty:
+            for _, r in quizzes_df.iterrows():
+                with st.container():
+                    st.markdown(f"### 📝 **{r['quiz_title']}**")
+                    st.markdown(f"**Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
+                    st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
+                    
+                    # Quick Control Buttons
+                    col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
+                    if col_b1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
+                        new_status = 0 if r['is_active'] == 1 else 1
+                        conn = get_db()
+                        conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
+                        conn.commit()
+                        conn.close()
+                        st.rerun()
+                    
+                    if col_b2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
+                        now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+                        now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
+                        conn = get_db()
+                        conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
+                        conn.commit()
+                        conn.close()
+                        st.success("Quiz abhi se LIVE kar diya gaya hai!")
+                        time.sleep(1)
+                        st.rerun()
+                    
+                    if col_b3.button(f"🗑️ Delete Quiz", key=f"del_quiz_{r['id']}", type="secondary"):
+                        conn = get_db()
+                        conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning(f"Quiz delete ho gaya.")
+                        time.sleep(1)
+                        st.rerun()
+
+                    # Direct Date & Time Change Form for this specific Quiz
+                    with st.expander(f"📅 Change Date, Time & Duration for: {r['quiz_title']}", expanded=False):
+                        try:
+                            cur_s_dt = datetime.strptime(r['start_datetime'], "%Y-%m-%d %H:%M")
+                            cur_e_dt = datetime.strptime(r['end_datetime'], "%Y-%m-%d %H:%M")
+                        except Exception:
+                            cur_s_dt = get_ist_now()
+                            cur_e_dt = get_ist_now() + timedelta(days=7)
+
+                        with st.form(f"quick_edit_quiz_{r['id']}"):
+                            ed_title = st.text_input("Quiz Title:", value=r['quiz_title'], key=f"t_{r['id']}")
+                            ed_dur = st.number_input("Exam Duration (Minutes):", min_value=1, max_value=300, value=int(r['duration_minutes']), key=f"d_{r['id']}")
+                            
+                            c1, c2 = st.columns(2)
+                            ed_s_date = c1.date_input("Start Date (IST):", value=cur_s_dt.date(), key=f"sd_{r['id']}")
+                            ed_s_time = c1.time_input("Start Time (IST):", value=cur_s_dt.time(), key=f"st_{r['id']}")
+                            ed_e_date = c2.date_input("End Date (IST):", value=cur_e_dt.date(), key=f"ed_{r['id']}")
+                            ed_e_time = c2.time_input("End Time (IST):", value=cur_e_dt.time(), key=f"et_{r['id']}")
+                            
+                            if st.form_submit_button("💾 Save Updated Date & Time", type="primary"):
+                                new_start_str = f"{ed_s_date} {ed_s_time.strftime('%H:%M')}"
+                                new_end_str = f"{ed_e_date} {ed_e_time.strftime('%H:%M')}"
+                                
+                                conn = get_db()
+                                conn.execute('''
+                                    UPDATE quizzes 
+                                    SET quiz_title = ?, duration_minutes = ?, start_datetime = ?, end_datetime = ?
+                                    WHERE id = ?
+                                ''', (clean_text(ed_title), ed_dur, new_start_str, new_end_str, r['id']))
+                                conn.commit()
+                                conn.close()
+                                st.success(f"'{ed_title}' ki Date & Time successfully update ho gayi!")
+                                time.sleep(1)
+                                st.rerun()
+
+                    st.divider()
+        else:
+            st.info("Abhi koi quiz available nahi hai. Upar diye gaye button se create karein.")
+
+    # --- SECTION 2: MASTER STUDENTS ---
+    elif admin_tab == "👥 Master Student Directory (Excel/Manual)":
         st.subheader("👥 Master Student Directory")
         st.markdown("""
         **Tip:** Repo me **`students.xlsx`** (`name`, `sr_no`) upload karne par students permanent load rahenge.
@@ -410,80 +526,6 @@ if selected_portal == "⚙️ Admin Control Center":
         else:
             st.write(f"Total Enrolled: **{len(master_df)} Students**")
             st.dataframe(master_df, use_container_width=True)
-
-    # --- SECTION 2: CREATE & MANAGE QUIZZES ---
-    elif admin_tab == "📚 Create & Manage Quizzes (Class 11 & 12 Controls)":
-        st.subheader("Manage Quizzes, Timings & Deletions")
-        
-        with st.expander("➕ Create New Quiz", expanded=False):
-            with st.form("new_quiz_form"):
-                q_title = st.text_input("Quiz Title:")
-                q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
-                
-                c_d1, c_d2 = st.columns(2)
-                cur_ist = get_ist_now()
-                start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
-                start_time = c_d1.time_input("Start Time (IST):", value=(cur_ist - timedelta(minutes=10)).time())
-                end_date = c_d2.date_input("End Date (IST):", value=(cur_ist + timedelta(days=7)).date())
-                end_time = c_d2.time_input("End Time (IST):", value=cur_ist.time())
-                
-                if st.form_submit_button("Create Quiz"):
-                    start_str = f"{start_date} {start_time.strftime('%H:%M')}"
-                    end_str = f"{end_date} {end_time.strftime('%H:%M')}"
-                    c_title = clean_text(q_title)
-                    if c_title:
-                        try:
-                            conn = get_db()
-                            c = conn.cursor()
-                            c.execute('''
-                                INSERT INTO quizzes (quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-                                VALUES (?, ?, ?, ?, 1)
-                            ''', (c_title, q_dur, start_str, end_str))
-                            conn.commit()
-                            conn.close()
-                            st.success(f"Quiz '{c_title}' ban gaya!")
-                            time.sleep(1)
-                            st.rerun()
-                        except sqlite3.IntegrityError:
-                            st.error("Yeh quiz pehle se bana hua hai.")
-
-        st.markdown("---")
-        st.write("### Existing Quizzes List & Controls")
-        if not quizzes_df.empty:
-            for _, r in quizzes_df.iterrows():
-                with st.container():
-                    st.markdown(f"**{r['quiz_title']}** | Duration: `{r['duration_minutes']} mins` | Status: `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
-                    st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
-                    
-                    col_q1, col_q2, col_q3 = st.columns([1, 1.5, 1])
-                    if col_q1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
-                        new_status = 0 if r['is_active'] == 1 else 1
-                        conn = get_db()
-                        conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
-                        conn.commit()
-                        conn.close()
-                        st.rerun()
-                    
-                    if col_q2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
-                        now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
-                        now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
-                        conn = get_db()
-                        conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
-                        conn.commit()
-                        conn.close()
-                        st.success("Quiz abhi se LIVE kar diya gaya hai!")
-                        time.sleep(1)
-                        st.rerun()
-                    
-                    if col_q3.button(f"🗑️ Delete Quiz", key=f"del_quiz_{r['id']}", type="secondary"):
-                        conn = get_db()
-                        conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.warning(f"Quiz delete ho gaya.")
-                        time.sleep(1)
-                        st.rerun()
-                    st.divider()
 
     # --- SECTION 3: QUESTION BANK ---
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
