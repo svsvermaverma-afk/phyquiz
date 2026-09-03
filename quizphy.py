@@ -18,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_FILE = "master_quiz_system_prod_v16.db"
+DB_FILE = "master_quiz_system_prod_v17.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
 
@@ -365,7 +365,7 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # --- SECTION 1: CREATE & MANAGE QUIZZES (WITH TOPIC EDITING) ---
+    # --- SECTION 1: CREATE & MANAGE QUIZZES ---
     if admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
         st.subheader("Existing Quizzes List & Controls")
         
@@ -409,13 +409,13 @@ if selected_portal == "⚙️ Admin Control Center":
 
         st.markdown("---")
         
-        # 2. Existing Quizzes Display with Topic & Date/Time Editing
+        # 2. Existing Quizzes Display
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
                     st.markdown(f"### 📝 **{r['quiz_title']}**")
-                    cls_val = r.get('target_class', 'Class 11')
-                    top_val = r.get('topic', 'General Physics')
+                    cls_val = r['target_class'] if 'target_class' in r and pd.notna(r['target_class']) else 'Class 11'
+                    top_val = r['topic'] if 'topic' in r and pd.notna(r['topic']) else 'General Physics'
                     st.markdown(f"🏷️ **Class:** `{cls_val}` | 📖 **Topic:** `{top_val}`")
                     st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
@@ -562,7 +562,7 @@ if selected_portal == "⚙️ Admin Control Center":
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
         else:
-            quiz_options = {f"[{r.get('target_class','Class 11')}] {r['quiz_title']} ({r.get('topic','General')})": r['id'] for _, r in quizzes_df.iterrows()}
+            quiz_options = {f"[{r.get('target_class','Class 11') if 'target_class' in r else 'Class 11'}] {r['quiz_title']} ({r.get('topic','General') if 'topic' in r else 'General'})": r['id'] for _, r in quizzes_df.iterrows()}
             sel_q_label = st.selectbox("Select Quiz:", list(quiz_options.keys()), key="q_quiz")
             sel_q_id = quiz_options[sel_q_label]
             
@@ -613,7 +613,7 @@ if selected_portal == "⚙️ Admin Control Center":
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
         else:
-            quiz_options = {f"[{r.get('target_class','Class 11')}] {r['quiz_title']} ({r.get('topic','General')})": r['id'] for _, r in quizzes_df.iterrows()}
+            quiz_options = {f"[{r.get('target_class','Class 11') if 'target_class' in r else 'Class 11'}] {r['quiz_title']} ({r.get('topic','General') if 'topic' in r else 'General'})": r['id'] for _, r in quizzes_df.iterrows()}
             sel_q_label = st.selectbox("Select Quiz to View Results:", list(quiz_options.keys()))
             sel_q_id = quiz_options[sel_q_label]
             
@@ -696,8 +696,10 @@ if selected_portal == "⚙️ Admin Control Center":
                     if 'Quizzes' in excel_file.sheet_names:
                         df_q = pd.read_excel(excel_file, sheet_name='Quizzes')
                         for _, r in df_q.iterrows():
+                            target_c = r['target_class'] if 'target_class' in r and pd.notna(r['target_class']) else 'Class 11'
+                            top_c = r['topic'] if 'topic' in r and pd.notna(r['topic']) else 'General Physics'
                             cur.execute("INSERT OR REPLACE INTO quizzes (id, target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                        (r['id'], r.get('target_class', 'Class 11'), r.get('topic', 'General'), clean_text(r['quiz_title']), r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
+                                        (r['id'], target_c, top_c, clean_text(r['quiz_title']), r['duration_minutes'], r['start_datetime'], r['end_datetime'], r['is_active']))
                     
                     if 'Questions' in excel_file.sheet_names:
                         df_ques = pd.read_excel(excel_file, sheet_name='Questions')
@@ -752,7 +754,12 @@ else:
         st.title("🎓 Student Examination Login Portal")
         st.markdown("Apna Quiz/Topic select karein, apna **Registered Name** aur Password me apna **SR No** darj karein.")
         
-        quiz_opts = {f"[{row.get('target_class','Class 11')}] {row['quiz_title']} • (Topic: {row.get('topic','General')})": row['id'] for _, row in active_quizzes.iterrows()}
+        quiz_opts = {}
+        for _, row in active_quizzes.iterrows():
+            cls_t = row['target_class'] if 'target_class' in row and pd.notna(row['target_class']) else 'Class'
+            top_t = row['topic'] if 'topic' in row and pd.notna(row['topic']) else 'General'
+            label = f"[{cls_t}] {row['quiz_title']} • (Topic: {top_t})"
+            quiz_opts[label] = row['id']
         
         col1, _ = st.columns([1.2, 1])
         with col1:
@@ -804,13 +811,20 @@ else:
     quiz_id = st.session_state.selected_quiz_id
 
     conn = get_db()
-    quiz_info = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
+    quiz_row = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
     conn.close()
+
+    # Convert sqlite3.Row safely to dict
+    quiz_dict = dict(quiz_row) if quiz_row else {}
+    quiz_title_val = quiz_dict.get('quiz_title', 'Exam')
+    quiz_topic_val = quiz_dict.get('topic', 'General')
+    quiz_class_val = quiz_dict.get('target_class', 'Class 11')
+    quiz_dur_val = int(quiz_dict.get('duration_minutes', 15))
 
     st.sidebar.markdown(f"**Candidate:** `{student_name}`")
     st.sidebar.markdown(f"**SR No:** `{student_sr}`")
-    st.sidebar.markdown(f"**Exam:** `{quiz_info['quiz_title']}`")
-    st.sidebar.markdown(f"**Topic:** `{quiz_info.get('topic', 'General')}`")
+    st.sidebar.markdown(f"**Exam:** `{quiz_title_val}`")
+    st.sidebar.markdown(f"**Topic:** `{quiz_topic_val}`")
 
     if st.sidebar.button("Log Out"):
         st.session_state.student_name = None
@@ -820,8 +834,8 @@ else:
         st.session_state.start_timestamp = None
         st.rerun()
 
-    st.title(f"📝 {quiz_info['quiz_title']}")
-    st.markdown(f"##### 📖 Topic: **{quiz_info.get('topic', 'General')}** | Class: **{quiz_info.get('target_class', 'Class 11')}**")
+    st.title(f"📝 {quiz_title_val}")
+    st.markdown(f"##### 📖 Topic: **{quiz_topic_val}** | Class: **{quiz_class_val}**")
 
     conn = get_db()
     sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
@@ -842,8 +856,8 @@ else:
         st.markdown("### 📌 Exam Guidelines & Anti-Cheat System:")
         st.markdown(f"""
         - **Student Name:** `{student_name}` (SR: `{student_sr}`)
-        - **Topic:** `{quiz_info.get('topic', 'General')}`
-        - **Duration:** `{quiz_info['duration_minutes']} Minutes`
+        - **Topic:** `{quiz_topic_val}`
+        - **Duration:** `{quiz_dur_val} Minutes`
         - **Total Questions:** `{len(questions_df)}`
         - **Rules:**
             1. Tab switch karne par warning aayegi aur count record hoga.
@@ -857,7 +871,7 @@ else:
         st.stop()
 
     elapsed = time.time() - st.session_state.start_timestamp
-    total_sec = quiz_info['duration_minutes'] * 60
+    total_sec = quiz_dur_val * 60
     remaining = total_sec - elapsed
 
     if remaining <= 0:
