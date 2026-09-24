@@ -49,7 +49,7 @@ st.markdown("""
         color: #e2e8f0;
     }
 
-    /* Mobile responsive styling */
+    /* Mobile Responsive Optimizations */
     @media only screen and (max-width: 768px) {
         .block-container {
             padding-top: 1rem !important;
@@ -250,7 +250,7 @@ def init_db():
     q12_row = c.fetchone()
     q12_id = q12_row[0] if q12_row else 2
 
-    # Auto Load Students from Repo File
+    # Auto Load Students from File
     for s_path in [STUDENTS_FILE, "students.csv"]:
         if os.path.exists(s_path):
             try:
@@ -271,7 +271,7 @@ def init_db():
             except Exception:
                 pass
 
-    # Auto Load Class 11 Questions from Repo
+    # Auto Load Class 11 Questions
     for q11_path in [Q11_FILE, "questions_11.csv"]:
         if os.path.exists(q11_path):
             try:
@@ -288,7 +288,7 @@ def init_db():
             except Exception:
                 pass
 
-    # Auto Load Class 12 Questions from Repo
+    # Auto Load Class 12 Questions
     for q12_path in [Q12_FILE, "questions_12.csv"]:
         if os.path.exists(q12_path):
             try:
@@ -337,7 +337,7 @@ def get_or_set_attempt_start(quiz_id, student_norm_name):
     conn.close()
     return start_epoch
 
-# Anti-Cheating & Live Timer Component (Mobile Responsive)
+# Anti-Cheating & Live Timer Component (Responsive)
 def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     timer_js = f"""
     <style>
@@ -406,10 +406,10 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
         sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
         switchCountElem.innerHTML = tabSwitches;
         
-        alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detect hua hai! Bar-bar tab badalne par test auto-submit ho jayega.');
+        alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detected! Repeated tab switching will result in automatic submission.');
         
         if (tabSwitches >= 3) {{
-            alert('❌ Maximum limit reach ho gayi hai. Test auto-submit ho raha hai.');
+            alert('❌ Maximum limit reached. The test is now being submitted automatically.');
             triggerAutoSubmit();
         }}
     }});
@@ -426,7 +426,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
 # 3. SIDEBAR NAVIGATION
 # ==========================================
 st.sidebar.title("🧭 Navigation")
-selected_portal = st.sidebar.radio("Select Access Portal:", ["🎓 Student Exam Portal", "⚙️ Admin Control Center"])
+selected_portal = st.sidebar.radio("Select Portal:", ["🎓 Student Exam Portal", "⚙️ Admin Control Center"])
 st.sidebar.divider()
 
 # ==========================================
@@ -438,7 +438,7 @@ if selected_portal == "⚙️ Admin Control Center":
 
     if not st.session_state.admin_authenticated:
         st.title("🔐 Admin Login Portal")
-        st.markdown("Authorized teacher/admin access.")
+        st.markdown("Authorized teacher/admin access only.")
         
         col1, _ = st.columns([1.2, 1])
         with col1:
@@ -450,19 +450,19 @@ if selected_portal == "⚙️ Admin Control Center":
                 if btn_login:
                     if in_user.strip() == ADMIN_USERNAME and in_pass.strip() == ADMIN_PASSWORD:
                         st.session_state.admin_authenticated = True
-                        st.success("Admin Login Successful!")
+                        st.success("Admin login successful!")
                         time.sleep(0.5)
                         st.rerun()
                     else:
-                        st.error("Galat Username ya Password! Access Denied.")
+                        st.error("Invalid Username or Password! Access Denied.")
         st.stop()
 
-    st.sidebar.success(f"👑 Admin Logged In: `{ADMIN_USERNAME}`")
+    st.sidebar.success(f"👑 Logged in as: `{ADMIN_USERNAME}`")
     if st.sidebar.button("Log Out Admin"):
         st.session_state.admin_authenticated = False
         st.rerun()
 
-    st.title("⚙️ Teacher & Exam Control Center")
+    st.title("⚙️ Teacher & Examination Control Center")
     st.info(f"🕒 Current Indian Standard Time (IST): **{get_ist_now().strftime('%Y-%m-%d %I:%M %p')}**")
 
     quizzes_df = get_all_quizzes()
@@ -471,7 +471,7 @@ if selected_portal == "⚙️ Admin Control Center":
         "📚 Create & Manage Quizzes (Class & Topic Controls)", 
         "👥 Master Student Directory (Excel/Manual)", 
         "📝 Question Bank (Excel/Manual)",
-        "📊 Student Results & Delete Controls", 
+        "📊 Student Results & Controls", 
         "💾 Full Database Backup & Restore (Excel)"
     ])
 
@@ -479,15 +479,15 @@ if selected_portal == "⚙️ Admin Control Center":
 
     # --- SECTION 1: CREATE & MANAGE QUIZZES ---
     if admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
-        st.subheader("Existing Quizzes List & Controls")
+        st.subheader("Existing Quizzes & Controls")
         
-        with st.expander("➕ Create New Quiz with Topic", expanded=False):
+        with st.expander("➕ Create New Quiz", expanded=False):
             with st.form("new_quiz_form"):
                 c_cls1, c_cls2 = st.columns(2)
                 target_class_choice = c_cls1.selectbox("Select Class:", ["Class 11", "Class 12", "Class 9", "Class 10", "Other"])
                 topic_name = c_cls2.text_input("Topic / Chapter Name (e.g., Kinematics):", value="Units & Measurement")
                 
-                q_title = st.text_input("Quiz Title (Auto or Custom):", value=f"{target_class_choice} - {topic_name}")
+                q_title = st.text_input("Quiz Title:", value=f"{target_class_choice} - {topic_name}")
                 q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
                 
                 c_d1, c_d2 = st.columns(2)
@@ -512,11 +512,11 @@ if selected_portal == "⚙️ Admin Control Center":
                             ''', (target_class_choice, c_top, c_title, q_dur, start_str, end_str))
                             conn.commit()
                             conn.close()
-                            st.success(f"Quiz '{c_title}' ban gaya!")
+                            st.success(f"Quiz '{c_title}' created successfully!")
                             time.sleep(1)
                             st.rerun()
                         except sqlite3.IntegrityError:
-                            st.error("Yeh quiz pehle se bana hua hai.")
+                            st.error("A quiz with this title already exists.")
 
         st.markdown("---")
         
@@ -546,7 +546,7 @@ if selected_portal == "⚙️ Admin Control Center":
                         conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
                         conn.commit()
                         conn.close()
-                        st.success("Quiz abhi se LIVE kar diya gaya hai!")
+                        st.success("Quiz is now LIVE immediately!")
                         time.sleep(1)
                         st.rerun()
                     
@@ -555,11 +555,11 @@ if selected_portal == "⚙️ Admin Control Center":
                         conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
                         conn.commit()
                         conn.close()
-                        st.warning(f"Quiz delete ho gaya.")
+                        st.warning("Quiz deleted.")
                         time.sleep(1)
                         st.rerun()
 
-                    with st.expander(f"📅 Change Topic, Date, Time & Duration for: {r['quiz_title']}", expanded=False):
+                    with st.expander(f"📅 Edit Details: {r['quiz_title']}", expanded=False):
                         try:
                             cur_s_dt = datetime.strptime(r['start_datetime'], "%Y-%m-%d %H:%M")
                             cur_e_dt = datetime.strptime(r['end_datetime'], "%Y-%m-%d %H:%M")
@@ -583,7 +583,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             ed_e_date = c2.date_input("End Date (IST):", value=cur_e_dt.date(), key=f"ed_{r['id']}")
                             ed_e_time = c2.time_input("End Time (IST):", value=cur_e_dt.time(), key=f"et_{r['id']}")
                             
-                            if st.form_submit_button("💾 Save Updated Topic, Date & Time", type="primary"):
+                            if st.form_submit_button("💾 Save Changes", type="primary"):
                                 new_start_str = f"{ed_s_date} {ed_s_time.strftime('%H:%M')}"
                                 new_end_str = f"{ed_e_date} {ed_e_time.strftime('%H:%M')}"
                                 
@@ -595,20 +595,20 @@ if selected_portal == "⚙️ Admin Control Center":
                                 ''', (ed_cls, clean_text(ed_topic), clean_text(ed_title), ed_dur, new_start_str, new_end_str, r['id']))
                                 conn.commit()
                                 conn.close()
-                                st.success(f"'{ed_title}' successfully update ho gaya!")
+                                st.success(f"'{ed_title}' updated successfully!")
                                 time.sleep(1)
                                 st.rerun()
 
                     st.divider()
         else:
-            st.info("Abhi koi quiz available nahi hai. Upar diye gaye button se create karein.")
+            st.info("No quizzes created yet. Use the button above to create one.")
 
     # --- SECTION 2: MASTER STUDENTS ---
     elif admin_tab == "👥 Master Student Directory (Excel/Manual)":
         st.subheader("👥 Master Student Directory")
-        st.markdown("**Tip:** Repo me **`students.xlsx`** (`name`, `sr_no`) upload karne par students permanent load rahenge.")
+        st.markdown("**Tip:** You can keep `students.xlsx` (`name`, `sr_no`) in the repository for permanent automatic loading.")
         
-        with st.expander("📂 Bulk Upload via Web Interface", expanded=True):
+        with st.expander("📂 Bulk Upload via Web", expanded=True):
             uploaded_master_stu = st.file_uploader("Upload Excel (.xlsx / .csv):", type=["xlsx", "csv"])
             if uploaded_master_stu:
                 try:
@@ -642,7 +642,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                     pass
                         conn.commit()
                         conn.close()
-                        st.success(f"Successfully {added_cnt} students add ho gaye!")
+                        st.success(f"Successfully imported {added_cnt} students!")
                         time.sleep(1)
                         st.rerun()
                 except Exception as e:
@@ -655,25 +655,25 @@ if selected_portal == "⚙️ Admin Control Center":
         conn.close()
         
         if master_df.empty:
-            st.info("Abhi koi student registered nahi hai.")
+            st.info("No registered students found.")
         else:
             st.write(f"Total Enrolled: **{len(master_df)} Students**")
             st.dataframe(master_df, use_container_width=True)
 
     # --- SECTION 3: QUESTION BANK ---
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
-        st.subheader("Manage Question Bank")
-        st.markdown("**Tip:** Repo me **`questions_11.xlsx`** aur **`questions_12.xlsx`** upload karne par questions automatic load ho jayenge.")
+        st.subheader("Question Bank Management")
+        st.markdown("**Tip:** Uploading `questions_11.xlsx` and `questions_12.xlsx` to the repository will automatically populate questions.")
         
         if quizzes_df.empty:
-            st.info("Pehle ek Quiz create karein.")
+            st.info("Please create a quiz first.")
         else:
             quiz_options = {f"[{r.get('target_class','Class 11') if 'target_class' in r else 'Class 11'}] {r['quiz_title']} ({r.get('topic','General') if 'topic' in r else 'General'})": r['id'] for _, r in quizzes_df.iterrows()}
             sel_q_label = st.selectbox("Select Quiz:", list(quiz_options.keys()), key="q_quiz")
             sel_q_id = quiz_options[sel_q_label]
             
             with st.expander("📂 Bulk Upload Questions via Web", expanded=True):
-                st.markdown("Columns: `question`, `option_a`, `option_b`, `option_c`, `option_d`, `correct_option`")
+                st.markdown("Required Columns: `question`, `option_a`, `option_b`, `option_c`, `option_d`, `correct_option`")
                 uploaded_q = st.file_uploader("Upload Questions File:", type=["xlsx", "csv"], key="q_file")
                 if uploaded_q:
                     try:
@@ -691,7 +691,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                 cnt += 1
                             conn.commit()
                             conn.close()
-                            st.success(f"{cnt} questions imported!")
+                            st.success(f"{cnt} questions imported successfully!")
                             time.sleep(1)
                             st.rerun()
                     except Exception as e:
@@ -701,9 +701,10 @@ if selected_portal == "⚙️ Admin Control Center":
             q_df = get_questions_by_quiz(sel_q_id)
             st.write(f"Total Questions: **{len(q_df)}**")
             for idx, row in q_df.iterrows():
+                # Questions remain as-is in their original language
                 st.markdown(f"**Q{idx+1}. {row['question']}**")
                 st.markdown(f"- A: `{row['option_a']}` | B: `{row['option_b']}` | C: `{row['option_c']}` | D: `{row['option_d']}`")
-                st.markdown(f"🎯 **Answer:** `{row['correct_option']}`")
+                st.markdown(f"🎯 **Correct Answer:** `{row['correct_option']}`")
                 if st.button(f"Delete Q{idx+1}", key=f"del_q_{row['id']}"):
                     conn = get_db()
                     conn.execute("DELETE FROM questions WHERE id = ?", (row['id'],))
@@ -713,11 +714,11 @@ if selected_portal == "⚙️ Admin Control Center":
                 st.divider()
 
     # --- SECTION 4: STUDENT RESULTS ---
-    elif admin_tab == "📊 Student Results & Delete Controls":
+    elif admin_tab == "📊 Student Results & Controls":
         st.subheader("Student Submissions & Performance Sheet")
         
         if quizzes_df.empty:
-            st.info("Pehle ek Quiz create karein.")
+            st.info("Please create a quiz first.")
         else:
             quiz_options = {f"[{r.get('target_class','Class 11') if 'target_class' in r else 'Class 11'}] {r['quiz_title']} ({r.get('topic','General') if 'topic' in r else 'General'})": r['id'] for _, r in quizzes_df.iterrows()}
             sel_q_label = st.selectbox("Select Quiz to View Results:", list(quiz_options.keys()))
@@ -734,7 +735,7 @@ if selected_portal == "⚙️ Admin Control Center":
             conn.close()
             
             if subs_df.empty:
-                st.info("Is quiz ke liye abhi koi submission nahi hai.")
+                st.info("No submissions found for this quiz.")
             else:
                 st.write("### Batch Result Log")
                 st.dataframe(subs_df, use_container_width=True)
@@ -749,13 +750,13 @@ if selected_portal == "⚙️ Admin Control Center":
                     conn.execute("DELETE FROM quiz_attempts WHERE quiz_id = ?", (sel_q_id,))
                     conn.commit()
                     conn.close()
-                    st.warning("Submissions aur saved timers clear ho gaye.")
+                    st.warning("All submissions and attempt timers cleared.")
                     time.sleep(1)
                     st.rerun()
 
     # --- SECTION 5: BACKUP & RESTORE ---
     elif admin_tab == "💾 Full Database Backup & Restore (Excel)":
-        st.subheader("💾 Complete Data Backup & Restore")
+        st.subheader("💾 Full Database Backup & Restore")
         
         conn = get_db()
         stu_export = pd.read_sql_query("SELECT * FROM master_students", conn)
@@ -828,7 +829,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     
                     conn.commit()
                     conn.close()
-                    st.success("✅ Sara data successfully restore ho gaya!")
+                    st.success("✅ All data restored successfully!")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
@@ -849,13 +850,13 @@ else:
     active_quizzes = quizzes_df[quizzes_df['is_active'] == 1] if not quizzes_df.empty else pd.DataFrame()
 
     if active_quizzes.empty:
-        st.error("🛑 Filhal koi bhi exam active nahi hai. Kripya teacher se sampark karein.")
+        st.error("🛑 No exams are currently active. Please contact your subject teacher.")
         st.stop()
 
     # Student Login Form
     if not st.session_state.student_name or not st.session_state.selected_quiz_id:
         st.subheader("🎓 Student Examination Login Portal")
-        st.markdown("Apna Quiz/Topic select karein, apna **Registered Name** aur Password me apna **SR No** darj karein.")
+        st.markdown("Select your Quiz/Topic, enter your **Registered Full Name** and your **SR No** as Password.")
         
         quiz_opts = {}
         for _, row in active_quizzes.iterrows():
@@ -868,9 +869,8 @@ else:
         with col1:
             with st.form("student_login_form"):
                 sel_quiz_label = st.selectbox("Select Quiz / Topic:", list(quiz_opts.keys()))
-                # By default blank, user apna naam bharega
-                in_name = st.text_input("Student Name (Registered):", placeholder="Apna pura naam darj karein")
-                in_pwd = st.text_input("Password (Aapka SR No):", type="password")
+                in_name = st.text_input("Student Name (Registered):", placeholder="Enter your full name")
+                in_pwd = st.text_input("Password (Your SR No):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
                 
@@ -894,15 +894,15 @@ else:
                         end_dt = now_ist + timedelta(days=10)
                     
                     if not clean_input_name or not clean_input_pwd:
-                        st.error("Kripya Naam aur Password (SR No) dono darj karein.")
+                        st.error("Please enter both Name and Password (SR No).")
                     elif not student_data:
-                        st.error(f"❌ Student Name '{clean_input_name}' registered list me nahi mila! Kripya spelling check karein.")
+                        st.error(f"❌ Student Name '{clean_input_name}' is not registered! Please verify spelling.")
                     elif clean_sr_no(student_data['sr_no']) != clean_input_pwd:
-                        st.error("Galat Password! (Password aapka SR Number hai).")
+                        st.error("Incorrect Password! (Your password is your SR Number).")
                     elif now_ist < start_dt:
-                        st.error(f"⏳ Exam abhi shuru nahi hua hai! Start Time (IST): {q_data['start_datetime']}")
+                        st.error(f"⏳ Exam has not started yet! Start Time (IST): {q_data['start_datetime']}")
                     elif now_ist > end_dt:
-                        st.error(f"⏰ Exam ka samay samapt ho chuka hai! End Time (IST): {q_data['end_datetime']}")
+                        st.error(f"⏰ Exam window has expired! End Time (IST): {q_data['end_datetime']}")
                     else:
                         st.session_state.student_name = student_data['student_name']
                         st.session_state.student_sr = clean_sr_no(student_data['sr_no'])
@@ -944,14 +944,14 @@ else:
     conn.close()
 
     if sub_check:
-        st.success(f"✅ {student_name}, aapka test pehle hi successfully submit ho chuka hai!")
+        st.success(f"✅ {student_name}, your test has already been successfully submitted!")
         st.metric("Score", f"{sub_check['score']} / {sub_check['total_questions']}")
         st.metric("Tab Switches Recorded", f"{sub_check['tab_switches']} times")
         st.stop()
 
     questions_df = get_questions_by_quiz(quiz_id)
     if questions_df.empty:
-        st.info("Is quiz me abhi koi question add nahi kiya gaya hai.")
+        st.info("No questions have been added to this quiz yet.")
         st.stop()
 
     # Attempt check in DB
@@ -961,16 +961,16 @@ else:
     conn.close()
 
     if not attempt_row:
-        st.markdown("### 📌 Exam Guidelines & Anti-Cheat System:")
+        st.markdown("### 📌 Examination Guidelines & Proctoring Rules:")
         st.markdown(f"""
         - **Student Name:** `{student_name}` (SR: `{student_sr}`)
         - **Topic:** `{quiz_topic_val}`
         - **Duration:** `{quiz_dur_val} Minutes`
         - **Total Questions:** `{len(questions_df)}`
-        - **Rules:**
-            1. 'Start Exam Now' par click karte hi **{quiz_dur_val} minute** ka timer shuru ho jayega.
-            2. Page refresh ya close karne par bhi timer background me chalta rahega.
-            3. Tab switch karne par warning aayegi aur 3 tab switches par auto-submit ho jayega.
+        - **Instructions:**
+            1. Clicking **'Start Exam Now'** will initiate the continuous countdown timer (**{quiz_dur_val} minutes**).
+            2. Refreshing, closing, or navigating away will NOT pause your timer.
+            3. Tab switching is strictly monitored. On 3 violations, your test will automatically submit.
         """)
         if st.button("🚀 Start Exam Now", type="primary"):
             get_or_set_attempt_start(quiz_id, norm_name)
@@ -991,7 +991,7 @@ else:
         ''', (quiz_id, student_name, student_sr, len(questions_df), sub_time))
         conn.commit()
         conn.close()
-        st.error("⏰ Time Up! Aapka exam samapt ho chuka hai aur auto-submit ho gaya hai.")
+        st.error("⏰ Time Up! Your exam duration has ended and your test was auto-submitted.")
         st.stop()
 
     inject_live_timer_and_security(remaining, quiz_id, student_name)
@@ -1000,6 +1000,7 @@ else:
     with st.form("exam_form"):
         answers = {}
         for idx, row in questions_df.iterrows():
+            # Question & Options remain exactly as written in Excel/CSV
             st.markdown(f"**Q{idx+1}. {row['question']}**")
             opts = [row['option_a'], row['option_b'], row['option_c'], row['option_d']]
             answers[row['id']] = st.radio("Choose Option:", opts, key=f"q_{row['id']}", index=None)
@@ -1036,6 +1037,6 @@ else:
             conn.close()
             
             st.balloons()
-            st.success(f"🎉 Exam Successfully Submitted! Score: {score}/{len(questions_df)}")
+            st.success(f"🎉 Exam Successfully Submitted! Your Score: {score}/{len(questions_df)}")
             time.sleep(2)
             st.rerun()
