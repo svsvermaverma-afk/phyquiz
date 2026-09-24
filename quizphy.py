@@ -12,20 +12,59 @@ import streamlit.components.v1 as components
 # 1. PAGE CONFIGURATION & RESPONSIVE CSS
 # ==========================================
 st.set_page_config(
-    page_title="Proctored Quiz Portal",
-    page_icon="🎓",
+    page_title="ABIC Renukoot - Physics Quiz Portal",
+    page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
 st.markdown("""
 <style>
+    /* Header Styling */
+    .school-header {
+        text-align: center;
+        padding: 12px 10px;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    }
+    .school-header h1 {
+        margin: 0;
+        font-size: 2rem !important;
+        font-weight: 800;
+        letter-spacing: 1px;
+        color: #ffffff !important;
+    }
+    .school-header h3 {
+        margin: 5px 0;
+        font-size: 1.25rem !important;
+        font-weight: 600;
+        color: #f1f5f9 !important;
+    }
+    .school-header p {
+        margin: 4px 0 0 0;
+        font-size: 1rem;
+        color: #e2e8f0;
+    }
+
+    /* Mobile responsive styling */
     @media only screen and (max-width: 768px) {
         .block-container {
-            padding-top: 1.5rem !important;
+            padding-top: 1rem !important;
             padding-left: 0.8rem !important;
             padding-right: 0.8rem !important;
             padding-bottom: 2rem !important;
+        }
+        .school-header h1 {
+            font-size: 1.4rem !important;
+        }
+        .school-header h3 {
+            font-size: 1rem !important;
+        }
+        .school-header p {
+            font-size: 0.88rem !important;
         }
         .stButton>button {
             width: 100% !important;
@@ -41,19 +80,22 @@ st.markdown("""
             flex: 1 1 100% !important;
             min-width: 100% !important;
         }
-        h1 {
-            font-size: 1.6rem !important;
-        }
-        h2, h3 {
-            font-size: 1.3rem !important;
-        }
     }
     @media only screen and (min-width: 769px) {
         .block-container {
-            padding-top: 2rem !important;
+            padding-top: 1.5rem !important;
         }
     }
 </style>
+""", unsafe_allow_html=True)
+
+# Top School & Teacher Header Banner
+st.markdown("""
+<div class="school-header">
+    <h1>ABIC RENUKOOT</h1>
+    <h3>⚡ Physics Subject Quiz Portal ⚡</h3>
+    <p>Mentor: <b>Shashank Verma, TGT (Physics)</b></p>
+</div>
 """, unsafe_allow_html=True)
 
 DB_FILE = "master_quiz_system_prod_v17.db"
@@ -175,7 +217,7 @@ def init_db():
         )
     ''')
 
-    # 6. Persistent Attempt Timers (NEW: Bachhe ka start time DB me lock rakhne ke liye)
+    # 6. Persistent Attempt Timers
     c.execute('''
         CREATE TABLE IF NOT EXISTS quiz_attempts (
             quiz_id INTEGER NOT NULL,
@@ -200,7 +242,6 @@ def init_db():
         VALUES (?, ?, ?, ?, ?, ?, 1)
     ''', ("Class 12", "Electrostatics & Magnetism", "Class 12 - Physics Exam", 20, default_start, default_end))
     
-    # Get Quiz IDs
     c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Exam",))
     q11_row = c.fetchone()
     q11_id = q11_row[0] if q11_row else 1
@@ -282,7 +323,6 @@ def get_questions_by_quiz(quiz_id):
     conn.close()
     return df
 
-# Persistent Timer Helper Functions
 def get_or_set_attempt_start(quiz_id, student_norm_name):
     conn = get_db()
     c = conn.cursor()
@@ -814,7 +854,7 @@ else:
 
     # Student Login Form
     if not st.session_state.student_name or not st.session_state.selected_quiz_id:
-        st.title("🎓 Student Examination Login Portal")
+        st.subheader("🎓 Student Examination Login Portal")
         st.markdown("Apna Quiz/Topic select karein, apna **Registered Name** aur Password me apna **SR No** darj karein.")
         
         quiz_opts = {}
@@ -828,7 +868,8 @@ else:
         with col1:
             with st.form("student_login_form"):
                 sel_quiz_label = st.selectbox("Select Quiz / Topic:", list(quiz_opts.keys()))
-                in_name = st.text_input("Student Name (Registered):", placeholder="Shashank Verma")
+                # By default blank, user apna naam bharega
+                in_name = st.text_input("Student Name (Registered):", placeholder="Apna pura naam darj karein")
                 in_pwd = st.text_input("Password (Aapka SR No):", type="password")
                 
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
@@ -897,7 +938,7 @@ else:
     st.title(f"📝 {quiz_title_val}")
     st.markdown(f"##### 📖 Topic: **{quiz_topic_val}** | Class: **{quiz_class_val}**")
 
-    # Pehle submit check karein
+    # Check previous submission
     conn = get_db()
     sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
     conn.close()
@@ -913,7 +954,7 @@ else:
         st.info("Is quiz me abhi koi question add nahi kiya gaya hai.")
         st.stop()
 
-    # Check karein agar bache ne pehle start kar diya hai
+    # Attempt check in DB
     norm_name = student_name.lower()
     conn = get_db()
     attempt_row = conn.execute("SELECT start_epoch FROM quiz_attempts WHERE quiz_id = ? AND normalized_name = ?", (quiz_id, norm_name)).fetchone()
@@ -936,13 +977,11 @@ else:
             st.rerun()
         st.stop()
 
-    # Database se locked start time calculate karein
     attempt_start = attempt_row["start_epoch"]
     elapsed = time.time() - attempt_start
     total_sec = quiz_dur_val * 60
     remaining = total_sec - elapsed
 
-    # Agar bache ka time khatam ho chuka hai
     if remaining <= 0:
         sub_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
         conn = get_db()
