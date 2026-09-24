@@ -8,6 +8,13 @@ import re
 from datetime import datetime, timedelta, timezone
 import streamlit.components.v1 as components
 
+# PDF Generation Libraries
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+
 # ==========================================
 # 1. PAGE CONFIGURATION & RESPONSIVE CSS
 # ==========================================
@@ -336,6 +343,137 @@ def get_or_set_attempt_start(quiz_id, student_norm_name):
         conn.commit()
     conn.close()
     return start_epoch
+
+# ==========================================
+# PDF MERIT LIST GENERATOR (Topper to Lower)
+# ==========================================
+def generate_merit_pdf(subs_df, quiz_info):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30
+    )
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'SchoolTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        leading=22,
+        alignment=1,
+        textColor=colors.HexColor("#1e3c72")
+    )
+    subtitle_style = ParagraphStyle(
+        'SubTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=13,
+        leading=16,
+        alignment=1,
+        textColor=colors.HexColor("#333333")
+    )
+    meta_style = ParagraphStyle(
+        'Meta',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=10,
+        leading=14,
+        alignment=1,
+        textColor=colors.HexColor("#555555")
+    )
+    cell_style = ParagraphStyle(
+        'Cell',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        leading=11,
+        alignment=1
+    )
+    cell_bold = ParagraphStyle(
+        'CellBold',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=9,
+        leading=11,
+        alignment=1
+    )
+    
+    elements = []
+    
+    # Header Elements
+    elements.append(Paragraph("ABIC RENUKOOT", title_style))
+    elements.append(Paragraph("Merit List & Student Performance Report", subtitle_style))
+    elements.append(Paragraph(f"<b>Exam:</b> {quiz_info.get('quiz_title', 'Exam')} | <b>Class:</b> {quiz_info.get('target_class', '')} | <b>Topic:</b> {quiz_info.get('topic', '')}", meta_style))
+    elements.append(Paragraph(f"Mentor: <b>Shashank Verma, TGT (Physics)</b> | Generated on: {get_ist_now().strftime('%d-%b-%Y %I:%M %p')}", meta_style))
+    elements.append(Spacer(1, 15))
+    
+    # Table Data
+    table_data = [
+        [
+            Paragraph("<b>Rank</b>", cell_bold),
+            Paragraph("<b>Student Name</b>", cell_bold),
+            Paragraph("<b>SR No</b>", cell_bold),
+            Paragraph("<b>Score</b>", cell_bold),
+            Paragraph("<b>Percentage</b>", cell_bold),
+            Paragraph("<b>Switches</b>", cell_bold),
+            Paragraph("<b>Submitted At</b>", cell_bold)
+        ]
+    ]
+    
+    for idx, row in subs_df.iterrows():
+        rank = idx + 1
+        pct = (row['score'] / row['total_questions'] * 100) if row['total_questions'] > 0 else 0
+        
+        # Rank display with badge for top 3
+        rank_str = f"🥇 Rank {rank}" if rank == 1 else (f"🥈 Rank {rank}" if rank == 2 else (f"🥉 Rank {rank}" if rank == 3 else f"{rank}"))
+        
+        table_data.append([
+            Paragraph(rank_str, cell_bold if rank <= 3 else cell_style),
+            Paragraph(str(row['student_name']), cell_style),
+            Paragraph(str(row['sr_no']), cell_style),
+            Paragraph(f"{row['score']} / {row['total_questions']}", cell_bold),
+            Paragraph(f"{pct:.1f}%", cell_style),
+            Paragraph(str(row['tab_switches']), cell_style),
+            Paragraph(str(row['submitted_at']), cell_style)
+        ])
+    
+    # Table Styling
+    col_widths = [65, 130, 65, 65, 60, 50, 100]
+    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    
+    t_style = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1e3c72")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#dcdcdc")),
+    ]
+    
+    # Zebra striping & Highlight Top 3
+    for r_idx in range(1, len(table_data)):
+        if r_idx == 1:
+            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff9db")))  # Gold highlight
+        elif r_idx == 2:
+            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#f1f3f5")))  # Silver highlight
+        elif r_idx == 3:
+            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff4e6")))  # Bronze highlight
+        elif r_idx % 2 == 0:
+            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#f8f9fa")))
+            
+    t.setStyle(TableStyle(t_style))
+    elements.append(t)
+    
+    doc.build(elements)
+    pdf_val = buffer.getvalue()
+    buffer.close()
+    return pdf_val
 
 # Anti-Cheating & Live Timer Component (Responsive)
 def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
@@ -687,7 +825,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                 cur.execute('''
                                     INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(r["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
+                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(row["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
                                 cnt += 1
                             conn.commit()
                             conn.close()
@@ -701,7 +839,6 @@ if selected_portal == "⚙️ Admin Control Center":
             q_df = get_questions_by_quiz(sel_q_id)
             st.write(f"Total Questions: **{len(q_df)}**")
             for idx, row in q_df.iterrows():
-                # Questions remain as-is in their original language
                 st.markdown(f"**Q{idx+1}. {row['question']}**")
                 st.markdown(f"- A: `{row['option_a']}` | B: `{row['option_b']}` | C: `{row['option_c']}` | D: `{row['option_d']}`")
                 st.markdown(f"🎯 **Correct Answer:** `{row['correct_option']}`")
@@ -713,7 +850,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.rerun()
                 st.divider()
 
-    # --- SECTION 4: STUDENT RESULTS ---
+    # --- SECTION 4: STUDENT RESULTS & MERIT PDF ---
     elif admin_tab == "📊 Student Results & Controls":
         st.subheader("Student Submissions & Performance Sheet")
         
@@ -724,10 +861,15 @@ if selected_portal == "⚙️ Admin Control Center":
             sel_q_label = st.selectbox("Select Quiz to View Results:", list(quiz_options.keys()))
             sel_q_id = quiz_options[sel_q_label]
             
+            # Fetch quiz metadata
             conn = get_db()
+            quiz_info_row = conn.execute("SELECT * FROM quizzes WHERE id = ?", (sel_q_id,)).fetchone()
+            quiz_meta = dict(quiz_info_row) if quiz_info_row else {}
+            
+            # Sort High to Low: Topper at the top
             try:
                 subs_df = pd.read_sql_query(
-                    "SELECT student_name, sr_no, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY id DESC", 
+                    "SELECT student_name, sr_no, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY score DESC, submitted_at ASC", 
                     conn, params=(sel_q_id,)
                 )
             except Exception:
@@ -737,12 +879,38 @@ if selected_portal == "⚙️ Admin Control Center":
             if subs_df.empty:
                 st.info("No submissions found for this quiz.")
             else:
-                st.write("### Batch Result Log")
-                st.dataframe(subs_df, use_container_width=True)
+                # Add Rank Column for display
+                subs_df_display = subs_df.copy()
+                subs_df_display.insert(0, "Rank", range(1, len(subs_df_display) + 1))
                 
-                csv_data = subs_df.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Download Results (CSV)", data=csv_data, file_name=f"results_{sel_q_id}.csv", mime="text/csv")
+                st.write("### 🏆 Merit List (Ranked from Highest to Lowest Score)")
+                st.dataframe(subs_df_display, use_container_width=True)
                 
+                # Action Buttons
+                c_d1, c_d2 = st.columns([1, 1])
+                
+                with c_d1:
+                    # PDF Download Button
+                    pdf_bytes = generate_merit_pdf(subs_df, quiz_meta)
+                    st.download_button(
+                        label="📄 Download Official Merit List (PDF)",
+                        data=pdf_bytes,
+                        file_name=f"Merit_List_{quiz_meta.get('quiz_title','Exam').replace(' ', '_')}_{get_ist_now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf",
+                        type="primary"
+                    )
+                
+                with c_d2:
+                    # CSV Download Button
+                    csv_data = subs_df_display.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Results (CSV)",
+                        data=csv_data,
+                        file_name=f"results_{sel_q_id}.csv",
+                        mime="text/csv"
+                    )
+                
+                st.divider()
                 if st.button(f"🗑️ Clear ALL Submissions for this Quiz", type="secondary"):
                     conn = get_db()
                     conn.execute("DELETE FROM submissions WHERE quiz_id = ?", (sel_q_id,))
@@ -1000,7 +1168,6 @@ else:
     with st.form("exam_form"):
         answers = {}
         for idx, row in questions_df.iterrows():
-            # Question & Options remain exactly as written in Excel/CSV
             st.markdown(f"**Q{idx+1}. {row['question']}**")
             opts = [row['option_a'], row['option_b'], row['option_c'], row['option_d']]
             answers[row['id']] = st.radio("Choose Option:", opts, key=f"q_{row['id']}", index=None)
