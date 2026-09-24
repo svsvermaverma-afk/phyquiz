@@ -9,14 +9,59 @@ from datetime import datetime, timedelta, timezone
 import streamlit.components.v1 as components
 
 # ==========================================
-# 1. PAGE CONFIGURATION
+# 1. PAGE CONFIGURATION & RESPONSIVE CSS
 # ==========================================
 st.set_page_config(
     page_title="Proctored Quiz Portal",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # Mobile par sidebar shuru me band rahega
 )
+
+# Custom Responsive CSS (Mobile vs Desktop)
+st.markdown("""
+<style>
+    /* Mobile screen optimizations (max-width: 768px) */
+    @media only screen and (max-width: 768px) {
+        .block-container {
+            padding-top: 1.5rem !important;
+            padding-left: 0.8rem !important;
+            padding-right: 0.8rem !important;
+            padding-bottom: 2rem !important;
+        }
+        /* Mobile par buttons bade aur touch-friendly banaye */
+        .stButton>button {
+            width: 100% !important;
+            padding: 12px 16px !important;
+            font-size: 16px !important;
+            margin-bottom: 8px !important;
+        }
+        /* Questions aur radios me padding adjust kare */
+        .stRadio > div {
+            gap: 10px !important;
+        }
+        /* Streamlit columns mobile par stack ho jaye */
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+        h1 {
+            font-size: 1.6rem !important;
+        }
+        h2, h3 {
+            font-size: 1.3rem !important;
+        }
+    }
+    
+    /* Desktop view me default clean look rahega */
+    @media only screen and (min-width: 769px) {
+        .block-container {
+            padding-top: 2rem !important;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
 
 DB_FILE = "master_quiz_system_prod_v17.db"
 ADMIN_USERNAME = "admin"
@@ -235,25 +280,36 @@ def get_questions_by_quiz(quiz_id):
     conn.close()
     return df
 
-# Anti-Cheating & Live Timer Component
+# Anti-Cheating & Live Timer Component (Fully Responsive)
 def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     timer_js = f"""
-    <div id="sticky-timer-box" style="
-        position: fixed; 
-        top: 60px; 
-        right: 25px; 
-        background: #ff4b4b; 
-        color: #ffffff; 
-        padding: 12px 24px; 
-        border-radius: 10px; 
-        font-family: monospace; 
-        font-size: 22px; 
-        font-weight: bold; 
-        z-index: 999999;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-        border: 2px solid white;
-    ">
-        ⏳ <span id="timer-display">Loading...</span> | ⚠️ Switches: <span id="switch-count">0</span>
+    <style>
+        #sticky-timer-box {{
+            position: fixed;
+            top: 50px;
+            right: 20px;
+            background: #ff4b4b;
+            color: #ffffff;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 999999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            border: 2px solid white;
+        }}
+        @media only screen and (max-width: 600px) {{
+            #sticky-timer-box {{
+                top: 40px;
+                right: 8px;
+                padding: 6px 12px;
+                font-size: 14px;
+            }}
+        }}
+    </style>
+    <div id="sticky-timer-box">
+        ⏳ <span id="timer-display">Loading...</span> | ⚠️ <span id="switch-count">0</span>
     </div>
 
     <script>
@@ -308,7 +364,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     document.addEventListener('paste', function(e) {{ e.preventDefault(); }});
     </script>
     """
-    components.html(timer_js, height=80)
+    components.html(timer_js, height=65)
 
 # ==========================================
 # 3. SIDEBAR NAVIGATION
@@ -557,7 +613,7 @@ if selected_portal == "⚙️ Admin Control Center":
     # --- SECTION 3: QUESTION BANK ---
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Manage Question Bank")
-        st.markdown("**Tip:** Repo me **`questions_11.xlsx`** aur **`questions_12.xlsx`** upload karne par dono classes ke questions automatic load ho jayenge.")
+        st.markdown("**Tip:** Repo me **`questions_11.xlsx`** aur **`questions_12.xlsx`** upload karne par questions automatically load rahenge.")
         
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
@@ -581,7 +637,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                 cur.execute('''
                                     INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(r["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
+                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(row["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
                                 cnt += 1
                             conn.commit()
                             conn.close()
