@@ -15,13 +15,11 @@ st.set_page_config(
     page_title="Proctored Quiz Portal",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="collapsed"  # Mobile par sidebar shuru me band rahega
+    initial_sidebar_state="collapsed"
 )
 
-# Custom Responsive CSS (Mobile vs Desktop)
 st.markdown("""
 <style>
-    /* Mobile screen optimizations (max-width: 768px) */
     @media only screen and (max-width: 768px) {
         .block-container {
             padding-top: 1.5rem !important;
@@ -29,18 +27,15 @@ st.markdown("""
             padding-right: 0.8rem !important;
             padding-bottom: 2rem !important;
         }
-        /* Mobile par buttons bade aur touch-friendly banaye */
         .stButton>button {
             width: 100% !important;
             padding: 12px 16px !important;
             font-size: 16px !important;
             margin-bottom: 8px !important;
         }
-        /* Questions aur radios me padding adjust kare */
         .stRadio > div {
             gap: 10px !important;
         }
-        /* Streamlit columns mobile par stack ho jaye */
         [data-testid="column"] {
             width: 100% !important;
             flex: 1 1 100% !important;
@@ -53,8 +48,6 @@ st.markdown("""
             font-size: 1.3rem !important;
         }
     }
-    
-    /* Desktop view me default clean look rahega */
     @media only screen and (min-width: 769px) {
         .block-container {
             padding-top: 2rem !important;
@@ -113,7 +106,7 @@ def init_db():
         )
     ''')
     
-    # 2. Quizzes Table (With Class and Topic)
+    # 2. Quizzes Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,7 +120,6 @@ def init_db():
         )
     ''')
     
-    # Safe Auto-Migration for topic & target_class
     try:
         c.execute("ALTER TABLE quizzes ADD COLUMN target_class TEXT DEFAULT 'Class 11'")
     except sqlite3.OperationalError:
@@ -180,6 +172,16 @@ def init_db():
             correct_option TEXT NOT NULL,
             is_correct INTEGER NOT NULL,
             recorded_at TEXT NOT NULL
+        )
+    ''')
+
+    # 6. Persistent Attempt Timers (NEW: Bachhe ka start time DB me lock rakhne ke liye)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS quiz_attempts (
+            quiz_id INTEGER NOT NULL,
+            normalized_name TEXT NOT NULL,
+            start_epoch REAL NOT NULL,
+            PRIMARY KEY(quiz_id, normalized_name)
         )
     ''')
     
@@ -280,21 +282,36 @@ def get_questions_by_quiz(quiz_id):
     conn.close()
     return df
 
-# Anti-Cheating & Live Timer Component (Fully Responsive)
+# Persistent Timer Helper Functions
+def get_or_set_attempt_start(quiz_id, student_norm_name):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT start_epoch FROM quiz_attempts WHERE quiz_id = ? AND normalized_name = ?", (quiz_id, student_norm_name))
+    row = c.fetchone()
+    if row:
+        start_epoch = row["start_epoch"]
+    else:
+        start_epoch = time.time()
+        c.execute("INSERT OR REPLACE INTO quiz_attempts (quiz_id, normalized_name, start_epoch) VALUES (?, ?, ?)", (quiz_id, student_norm_name, start_epoch))
+        conn.commit()
+    conn.close()
+    return start_epoch
+
+# Anti-Cheating & Live Timer Component (Mobile Responsive)
 def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     timer_js = f"""
     <style>
         #sticky-timer-box {{
-            position: fixed;
-            top: 50px;
-            right: 20px;
-            background: #ff4b4b;
-            color: #ffffff;
-            padding: 10px 18px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 18px;
-            font-weight: bold;
+            position: fixed; 
+            top: 50px; 
+            right: 20px; 
+            background: #ff4b4b; 
+            color: #ffffff; 
+            padding: 10px 18px; 
+            border-radius: 8px; 
+            font-family: monospace; 
+            font-size: 18px; 
+            font-weight: bold; 
             z-index: 999999;
             box-shadow: 0 4px 12px rgba(0,0,0,0.25);
             border: 2px solid white;
@@ -319,15 +336,19 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     let tabSwitches = sessionStorage.getItem('tab_switches_{quiz_id}_{student_name}') || 0;
     switchCountElem.innerHTML = tabSwitches;
 
+    function triggerAutoSubmit() {{
+        let buttons = window.parent.document.querySelectorAll('button');
+        buttons.forEach(btn => {{
+            if (btn.innerText.includes("Submit Final Answers")) {{
+                btn.click();
+            }}
+        }});
+    }}
+
     function updateTimer() {{
         if (timeLeft <= 0) {{
             display.innerHTML = "TIME UP!";
-            let buttons = window.parent.document.querySelectorAll('button');
-            buttons.forEach(btn => {{
-                if (btn.innerText.includes("Submit Final Answers")) {{
-                    btn.click();
-                }}
-            }});
+            triggerAutoSubmit();
             return;
         }}
 
@@ -349,12 +370,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
         
         if (tabSwitches >= 3) {{
             alert('❌ Maximum limit reach ho gayi hai. Test auto-submit ho raha hai.');
-            let buttons = window.parent.document.querySelectorAll('button');
-            buttons.forEach(btn => {{
-                if (btn.innerText.includes("Submit Final Answers")) {{
-                    btn.click();
-                }}
-            }});
+            triggerAutoSubmit();
         }}
     }});
 
@@ -425,7 +441,6 @@ if selected_portal == "⚙️ Admin Control Center":
     if admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
         st.subheader("Existing Quizzes List & Controls")
         
-        # 1. Create New Quiz Expander
         with st.expander("➕ Create New Quiz with Topic", expanded=False):
             with st.form("new_quiz_form"):
                 c_cls1, c_cls2 = st.columns(2)
@@ -465,7 +480,6 @@ if selected_portal == "⚙️ Admin Control Center":
 
         st.markdown("---")
         
-        # 2. Existing Quizzes Display
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
@@ -476,7 +490,6 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
-                    # Quick Control Buttons
                     col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
                     if col_b1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
@@ -506,7 +519,6 @@ if selected_portal == "⚙️ Admin Control Center":
                         time.sleep(1)
                         st.rerun()
 
-                    # Direct Topic, Class, Date & Time Change Form
                     with st.expander(f"📅 Change Topic, Date, Time & Duration for: {r['quiz_title']}", expanded=False):
                         try:
                             cur_s_dt = datetime.strptime(r['start_datetime'], "%Y-%m-%d %H:%M")
@@ -554,9 +566,7 @@ if selected_portal == "⚙️ Admin Control Center":
     # --- SECTION 2: MASTER STUDENTS ---
     elif admin_tab == "👥 Master Student Directory (Excel/Manual)":
         st.subheader("👥 Master Student Directory")
-        st.markdown("""
-        **Tip:** Repo me **`students.xlsx`** (`name`, `sr_no`) upload karne par students permanent load rahenge.
-        """)
+        st.markdown("**Tip:** Repo me **`students.xlsx`** (`name`, `sr_no`) upload karne par students permanent load rahenge.")
         
         with st.expander("📂 Bulk Upload via Web Interface", expanded=True):
             uploaded_master_stu = st.file_uploader("Upload Excel (.xlsx / .csv):", type=["xlsx", "csv"])
@@ -613,7 +623,7 @@ if selected_portal == "⚙️ Admin Control Center":
     # --- SECTION 3: QUESTION BANK ---
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Manage Question Bank")
-        st.markdown("**Tip:** Repo me **`questions_11.xlsx`** aur **`questions_12.xlsx`** upload karne par questions automatically load rahenge.")
+        st.markdown("**Tip:** Repo me **`questions_11.xlsx`** aur **`questions_12.xlsx`** upload karne par questions automatic load ho jayenge.")
         
         if quizzes_df.empty:
             st.info("Pehle ek Quiz create karein.")
@@ -637,7 +647,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                 cur.execute('''
                                     INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(row["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
+                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(r["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
                                 cnt += 1
                             conn.commit()
                             conn.close()
@@ -696,9 +706,10 @@ if selected_portal == "⚙️ Admin Control Center":
                     conn = get_db()
                     conn.execute("DELETE FROM submissions WHERE quiz_id = ?", (sel_q_id,))
                     conn.execute("DELETE FROM student_responses WHERE quiz_id = ?", (sel_q_id,))
+                    conn.execute("DELETE FROM quiz_attempts WHERE quiz_id = ?", (sel_q_id,))
                     conn.commit()
                     conn.close()
-                    st.warning("Submissions delete ho gaye.")
+                    st.warning("Submissions aur saved timers clear ho gaye.")
                     time.sleep(1)
                     st.rerun()
 
@@ -793,10 +804,6 @@ else:
         st.session_state.student_sr = None
     if "selected_quiz_id" not in st.session_state:
         st.session_state.selected_quiz_id = None
-    if "test_started" not in st.session_state:
-        st.session_state.test_started = False
-    if "start_timestamp" not in st.session_state:
-        st.session_state.start_timestamp = None
 
     quizzes_df = get_all_quizzes()
     active_quizzes = quizzes_df[quizzes_df['is_active'] == 1] if not quizzes_df.empty else pd.DataFrame()
@@ -870,7 +877,6 @@ else:
     quiz_row = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
     conn.close()
 
-    # Convert sqlite3.Row safely to dict
     quiz_dict = dict(quiz_row) if quiz_row else {}
     quiz_title_val = quiz_dict.get('quiz_title', 'Exam')
     quiz_topic_val = quiz_dict.get('topic', 'General')
@@ -886,13 +892,12 @@ else:
         st.session_state.student_name = None
         st.session_state.student_sr = None
         st.session_state.selected_quiz_id = None
-        st.session_state.test_started = False
-        st.session_state.start_timestamp = None
         st.rerun()
 
     st.title(f"📝 {quiz_title_val}")
     st.markdown(f"##### 📖 Topic: **{quiz_topic_val}** | Class: **{quiz_class_val}**")
 
+    # Pehle submit check karein
     conn = get_db()
     sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
     conn.close()
@@ -908,7 +913,13 @@ else:
         st.info("Is quiz me abhi koi question add nahi kiya gaya hai.")
         st.stop()
 
-    if not st.session_state.test_started:
+    # Check karein agar bache ne pehle start kar diya hai
+    norm_name = student_name.lower()
+    conn = get_db()
+    attempt_row = conn.execute("SELECT start_epoch FROM quiz_attempts WHERE quiz_id = ? AND normalized_name = ?", (quiz_id, norm_name)).fetchone()
+    conn.close()
+
+    if not attempt_row:
         st.markdown("### 📌 Exam Guidelines & Anti-Cheat System:")
         st.markdown(f"""
         - **Student Name:** `{student_name}` (SR: `{student_sr}`)
@@ -916,22 +927,32 @@ else:
         - **Duration:** `{quiz_dur_val} Minutes`
         - **Total Questions:** `{len(questions_df)}`
         - **Rules:**
-            1. Tab switch karne par warning aayegi aur count record hoga.
-            2. 3 baar tab switch karne par test auto-submit ho jayega.
-            3. Timer continuous chalega.
+            1. 'Start Exam Now' par click karte hi **{quiz_dur_val} minute** ka timer shuru ho jayega.
+            2. Page refresh ya close karne par bhi timer background me chalta rahega.
+            3. Tab switch karne par warning aayegi aur 3 tab switches par auto-submit ho jayega.
         """)
         if st.button("🚀 Start Exam Now", type="primary"):
-            st.session_state.test_started = True
-            st.session_state.start_timestamp = time.time()
+            get_or_set_attempt_start(quiz_id, norm_name)
             st.rerun()
         st.stop()
 
-    elapsed = time.time() - st.session_state.start_timestamp
+    # Database se locked start time calculate karein
+    attempt_start = attempt_row["start_epoch"]
+    elapsed = time.time() - attempt_start
     total_sec = quiz_dur_val * 60
     remaining = total_sec - elapsed
 
+    # Agar bache ka time khatam ho chuka hai
     if remaining <= 0:
-        st.error("⏰ Time Up! Samay samapt ho gaya hai.")
+        sub_time = get_ist_now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = get_db()
+        conn.execute('''
+            INSERT OR REPLACE INTO submissions (quiz_id, student_name, sr_no, score, total_questions, tab_switches, status, submitted_at)
+            VALUES (?, ?, ?, 0, ?, 0, 'Auto-Submitted (Time Up)', ?)
+        ''', (quiz_id, student_name, student_sr, len(questions_df), sub_time))
+        conn.commit()
+        conn.close()
+        st.error("⏰ Time Up! Aapka exam samapt ho chuka hai aur auto-submit ho gaya hai.")
         st.stop()
 
     inject_live_timer_and_security(remaining, quiz_id, student_name)
