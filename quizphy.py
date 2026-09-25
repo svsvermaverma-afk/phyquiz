@@ -255,7 +255,7 @@ def init_db():
     
     c.execute('''
         INSERT OR IGNORE INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, 0)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
     ''', ("Class 12", "Electrostatics & Magnetism", "Class 12 - Physics Exam", 20, default_start, default_end))
     
     c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Exam",))
@@ -602,27 +602,30 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
                     col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
+                    
+                    # Toggle Active: Sirf usi Class ke doosre tests ko band karega
                     if col_b1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
-                        # Single Live Quiz Rule: Agar kisi ko active kar rahe hain, to baki sabko disable karein
                         if new_status == 1:
-                            conn.execute("UPDATE quizzes SET is_active = 0")
+                            # Class-wise rule: Sirf usi class ke baaki quizzes ko disable kare
+                            conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
                         conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
                         conn.commit()
                         conn.close()
                         st.rerun()
                     
+                    # Start NOW: Sirf usi Class ka 1 test LIVE karega
                     if col_b2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
                         now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
                         now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
                         conn = get_db()
-                        # Baaki saare quizzes ko inactive karke sirf isko live karein
-                        conn.execute("UPDATE quizzes SET is_active = 0")
+                        # Class-wise rule: Sirf usi class ke doosre tests band honge
+                        conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
                         conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
                         conn.commit()
                         conn.close()
-                        st.success("Sirf yeh Quiz abhi se LIVE kar diya gaya hai!")
+                        st.success(f"{cls_val} ke liye sirf yeh Quiz LIVE kar diya gaya hai!")
                         time.sleep(1)
                         st.rerun()
                     
@@ -807,7 +810,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     FROM student_responses r
                     JOIN questions q ON r.question_id = q.id
                     WHERE r.quiz_id = ?
-                ''', (sel_q_id,)).fetchall()
+                ''', (sel_q_id,))
                 
                 for rr in resp_rows:
                     is_corr = 1 if is_answer_correct(rr['selected_option'], rr['correct_option'], rr['option_a'], rr['option_b'], rr['option_c'], rr['option_d']) else 0
@@ -956,7 +959,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.error(f"Restore failed: {e}")
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL (ONLY LIVE QUIZ SHOWN)
+# 5. STUDENT EXAM PORTAL (CLASS-WISE 1 LIVE QUIZ)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -967,7 +970,6 @@ else:
         st.session_state.selected_quiz_id = None
 
     quizzes_df = get_all_quizzes()
-    # SIRF LIVE/ACTIVE QUIZ FILTER HOGA
     active_quizzes = quizzes_df[quizzes_df['is_active'] == 1] if not quizzes_df.empty else pd.DataFrame()
 
     if active_quizzes.empty:
@@ -977,25 +979,36 @@ else:
     # Student Login Form
     if not st.session_state.student_name or not st.session_state.selected_quiz_id:
         st.subheader("🎓 Student Examination Login Portal")
-        st.markdown("Enter your **Registered Full Name** and your **SR No** as Password to enter.")
+        st.markdown("Pehle apni Class chunein, phir apna **Registered Name** aur **SR No** daal kar exam start karein.")
         
-        quiz_opts = {}
-        for _, row in active_quizzes.iterrows():
-            cls_t = row['target_class'] if 'target_class' in row and pd.notna(row['target_class']) else 'Class'
-            top_t = row['topic'] if 'topic' in row and pd.notna(row['topic']) else 'General'
-            label = f"[{cls_t}] {row['quiz_title']} • (Topic: {top_t})"
-            quiz_opts[label] = row['id']
+        # Check active classes
+        avail_classes = sorted(active_quizzes['target_class'].unique().tolist())
         
         col1, _ = st.columns([1.2, 1])
         with col1:
+            # Student chooses Class (e.g. Class 11 ya Class 12)
+            sel_class = st.selectbox("Select Your Class:", avail_classes)
+            
+            # Filter quizzes for that selected class only
+            class_quizzes = active_quizzes[active_quizzes['target_class'] == sel_class]
+            
+            quiz_opts = {}
+            for _, row in class_quizzes.iterrows():
+                top_t = row['topic'] if 'topic' in row and pd.notna(row['topic']) else 'General'
+                label = f"{row['quiz_title']} • (Topic: {top_t})"
+                quiz_opts[label] = row['id']
+            
             with st.form("student_login_form"):
-                # Single live quiz hone par student ko confusion nahi hoga
+                # Single Live Exam for that class is displayed
                 if len(quiz_opts) == 1:
                     live_label = list(quiz_opts.keys())[0]
                     st.info(f"🔴 **Live Exam:** {live_label}")
                     sel_quiz_label = live_label
-                else:
+                elif len(quiz_opts) > 1:
                     sel_quiz_label = st.selectbox("Select Live Quiz / Topic:", list(quiz_opts.keys()))
+                else:
+                    st.warning(f"{sel_class} ke liye abhi koi quiz live nahi hai.")
+                    st.stop()
                 
                 in_name = st.text_input("Student Name (Registered):", placeholder="Enter your full name")
                 in_pwd = st.text_input("Password (Your SR No):", type="password")
