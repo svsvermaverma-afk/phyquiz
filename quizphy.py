@@ -8,12 +8,11 @@ import re
 from datetime import datetime, timedelta, timezone
 import streamlit.components.v1 as components
 
-# PDF Generation Libraries
-from reportlab.lib.pagesizes import letter, A4
+# PDF Generation Libraries (Merit List)
+from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
 
 # ==========================================
 # 1. PAGE CONFIGURATION & RESPONSIVE CSS
@@ -27,10 +26,10 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Header Styling */
+    /* Top Banner Styling */
     .school-header {
         text-align: center;
-        padding: 12px 10px;
+        padding: 14px 10px;
         margin-bottom: 20px;
         background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
         color: white;
@@ -64,24 +63,16 @@ st.markdown("""
             padding-right: 0.8rem !important;
             padding-bottom: 2rem !important;
         }
-        .school-header h1 {
-            font-size: 1.4rem !important;
-        }
-        .school-header h3 {
-            font-size: 1rem !important;
-        }
-        .school-header p {
-            font-size: 0.88rem !important;
-        }
+        .school-header h1 { font-size: 1.4rem !important; }
+        .school-header h3 { font-size: 1rem !important; }
+        .school-header p { font-size: 0.88rem !important; }
         .stButton>button {
             width: 100% !important;
             padding: 12px 16px !important;
             font-size: 16px !important;
             margin-bottom: 8px !important;
         }
-        .stRadio > div {
-            gap: 10px !important;
-        }
+        .stRadio > div { gap: 10px !important; }
         [data-testid="column"] {
             width: 100% !important;
             flex: 1 1 100% !important;
@@ -89,9 +80,7 @@ st.markdown("""
         }
     }
     @media only screen and (min-width: 769px) {
-        .block-container {
-            padding-top: 1.5rem !important;
-        }
+        .block-container { padding-top: 1.5rem !important; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -132,6 +121,33 @@ def clean_sr_no(sr_val):
         sr_str = sr_str[:-2]
     return sr_str
 
+# Smart Answer Matcher Engine (To prevent 0 Score Bug)
+def is_answer_correct(selected, correct, opt_a, opt_b, opt_c, opt_d):
+    if not selected:
+        return False
+    s = clean_text(selected).strip().lower()
+    c = clean_text(correct).strip().lower()
+    a = clean_text(opt_a).strip().lower()
+    b = clean_text(opt_b).strip().lower()
+    c_opt = clean_text(opt_c).strip().lower()
+    d = clean_text(opt_d).strip().lower()
+    
+    # Direct Match
+    if s == c:
+        return True
+    
+    # Letter & Index Mapping
+    mapping = {
+        'a': a, 'option a': a, '(a)': a, '1': a,
+        'b': b, 'option b': b, '(b)': b, '2': b,
+        'c': c_opt, 'option c': c_opt, '(c)': c_opt, '3': c_opt,
+        'd': d, 'option d': d, '(d)': d, '4': d
+    }
+    
+    if c in mapping and s == mapping[c]:
+        return True
+    return False
+
 # ==========================================
 # 2. DATABASE MANAGEMENT & AUTO-SYNC
 # ==========================================
@@ -145,7 +161,6 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1. Master Students Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS master_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,7 +170,6 @@ def init_db():
         )
     ''')
     
-    # 2. Quizzes Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,7 +192,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
-    # 3. Questions Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -192,7 +205,6 @@ def init_db():
         )
     ''')
     
-    # 4. Overall Submissions Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,7 +220,6 @@ def init_db():
         )
     ''')
     
-    # 5. Question Responses Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -224,7 +235,6 @@ def init_db():
         )
     ''')
 
-    # 6. Persistent Attempt Timers
     c.execute('''
         CREATE TABLE IF NOT EXISTS quiz_attempts (
             quiz_id INTEGER NOT NULL,
@@ -238,7 +248,6 @@ def init_db():
     default_start = now_time.strftime("%Y-%m-%d %H:%M")
     default_end = (now_time + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
     
-    # Initialize Default Quizzes
     c.execute('''
         INSERT OR IGNORE INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
         VALUES (?, ?, ?, ?, ?, ?, 1)
@@ -257,7 +266,7 @@ def init_db():
     q12_row = c.fetchone()
     q12_id = q12_row[0] if q12_row else 2
 
-    # Auto Load Students from File
+    # Load Students
     for s_path in [STUDENTS_FILE, "students.csv"]:
         if os.path.exists(s_path):
             try:
@@ -278,7 +287,7 @@ def init_db():
             except Exception:
                 pass
 
-    # Auto Load Class 11 Questions
+    # Load Questions Class 11
     for q11_path in [Q11_FILE, "questions_11.csv"]:
         if os.path.exists(q11_path):
             try:
@@ -295,7 +304,7 @@ def init_db():
             except Exception:
                 pass
 
-    # Auto Load Class 12 Questions
+    # Load Questions Class 12
     for q12_path in [Q12_FILE, "questions_12.csv"]:
         if os.path.exists(q12_path):
             try:
@@ -345,93 +354,34 @@ def get_or_set_attempt_start(quiz_id, student_norm_name):
     return start_epoch
 
 # ==========================================
-# PDF MERIT LIST GENERATOR (Topper to Lower)
+# PDF MERIT LIST GENERATOR
 # ==========================================
 def generate_merit_pdf(subs_df, quiz_info):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
-    )
-    
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'SchoolTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=18,
-        leading=22,
-        alignment=1,
-        textColor=colors.HexColor("#1e3c72")
-    )
-    subtitle_style = ParagraphStyle(
-        'SubTitle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=13,
-        leading=16,
-        alignment=1,
-        textColor=colors.HexColor("#333333")
-    )
-    meta_style = ParagraphStyle(
-        'Meta',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=10,
-        leading=14,
-        alignment=1,
-        textColor=colors.HexColor("#555555")
-    )
-    cell_style = ParagraphStyle(
-        'Cell',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=11,
-        alignment=1
-    )
-    cell_bold = ParagraphStyle(
-        'CellBold',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=9,
-        leading=11,
-        alignment=1
-    )
+    
+    title_style = ParagraphStyle('SchoolTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=1, textColor=colors.HexColor("#1e3c72"))
+    subtitle_style = ParagraphStyle('SubTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=13, leading=16, alignment=1, textColor=colors.HexColor("#333333"))
+    meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontName='Helvetica', fontSize=10, leading=14, alignment=1, textColor=colors.HexColor("#555555"))
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=11, alignment=1)
+    cell_bold = ParagraphStyle('CellBold', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=1)
     
     elements = []
-    
-    # Header Elements
     elements.append(Paragraph("ABIC RENUKOOT", title_style))
     elements.append(Paragraph("Merit List & Student Performance Report", subtitle_style))
     elements.append(Paragraph(f"<b>Exam:</b> {quiz_info.get('quiz_title', 'Exam')} | <b>Class:</b> {quiz_info.get('target_class', '')} | <b>Topic:</b> {quiz_info.get('topic', '')}", meta_style))
     elements.append(Paragraph(f"Mentor: <b>Shashank Verma, TGT (Physics)</b> | Generated on: {get_ist_now().strftime('%d-%b-%Y %I:%M %p')}", meta_style))
     elements.append(Spacer(1, 15))
     
-    # Table Data
     table_data = [
-        [
-            Paragraph("<b>Rank</b>", cell_bold),
-            Paragraph("<b>Student Name</b>", cell_bold),
-            Paragraph("<b>SR No</b>", cell_bold),
-            Paragraph("<b>Score</b>", cell_bold),
-            Paragraph("<b>Percentage</b>", cell_bold),
-            Paragraph("<b>Switches</b>", cell_bold),
-            Paragraph("<b>Submitted At</b>", cell_bold)
-        ]
+        [Paragraph("<b>Rank</b>", cell_bold), Paragraph("<b>Student Name</b>", cell_bold), Paragraph("<b>SR No</b>", cell_bold), Paragraph("<b>Score</b>", cell_bold), Paragraph("<b>Percentage</b>", cell_bold), Paragraph("<b>Switches</b>", cell_bold), Paragraph("<b>Submitted At</b>", cell_bold)]
     ]
     
     for idx, row in subs_df.iterrows():
         rank = idx + 1
         pct = (row['score'] / row['total_questions'] * 100) if row['total_questions'] > 0 else 0
-        
-        # Rank display with badge for top 3
         rank_str = f"🥇 Rank {rank}" if rank == 1 else (f"🥈 Rank {rank}" if rank == 2 else (f"🥉 Rank {rank}" if rank == 3 else f"{rank}"))
-        
         table_data.append([
             Paragraph(rank_str, cell_bold if rank <= 3 else cell_style),
             Paragraph(str(row['student_name']), cell_style),
@@ -442,10 +392,8 @@ def generate_merit_pdf(subs_df, quiz_info):
             Paragraph(str(row['submitted_at']), cell_style)
         ])
     
-    # Table Styling
     col_widths = [65, 130, 65, 65, 60, 50, 100]
     t = Table(table_data, colWidths=col_widths, repeatRows=1)
-    
     t_style = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1e3c72")),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -456,20 +404,18 @@ def generate_merit_pdf(subs_df, quiz_info):
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#dcdcdc")),
     ]
     
-    # Zebra striping & Highlight Top 3
     for r_idx in range(1, len(table_data)):
         if r_idx == 1:
-            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff9db")))  # Gold highlight
+            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff9db")))
         elif r_idx == 2:
-            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#f1f3f5")))  # Silver highlight
+            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#f1f3f5")))
         elif r_idx == 3:
-            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff4e6")))  # Bronze highlight
+            t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#fff4e6")))
         elif r_idx % 2 == 0:
             t_style.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#f8f9fa")))
             
     t.setStyle(TableStyle(t_style))
     elements.append(t)
-    
     doc.build(elements)
     pdf_val = buffer.getvalue()
     buffer.close()
@@ -529,7 +475,6 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
             triggerAutoSubmit();
             return;
         }}
-
         let mins = Math.floor(timeLeft / 60);
         let secs = timeLeft % 60;
         display.innerHTML = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
@@ -543,9 +488,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
         tabSwitches++;
         sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
         switchCountElem.innerHTML = tabSwitches;
-        
         alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detected! Repeated tab switching will result in automatic submission.');
-        
         if (tabSwitches >= 3) {{
             alert('❌ Maximum limit reached. The test is now being submitted automatically.');
             triggerAutoSubmit();
@@ -577,14 +520,12 @@ if selected_portal == "⚙️ Admin Control Center":
     if not st.session_state.admin_authenticated:
         st.title("🔐 Admin Login Portal")
         st.markdown("Authorized teacher/admin access only.")
-        
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("admin_login_form"):
                 in_user = st.text_input("Admin Username:")
                 in_pass = st.text_input("Admin Password:", type="password")
                 btn_login = st.form_submit_button("Sign In as Admin", type="primary")
-                
                 if btn_login:
                     if in_user.strip() == ADMIN_USERNAME and in_pass.strip() == ADMIN_PASSWORD:
                         st.session_state.admin_authenticated = True
@@ -604,7 +545,6 @@ if selected_portal == "⚙️ Admin Control Center":
     st.info(f"🕒 Current Indian Standard Time (IST): **{get_ist_now().strftime('%Y-%m-%d %I:%M %p')}**")
 
     quizzes_df = get_all_quizzes()
-    
     admin_tab = st.selectbox("Select Management Section:", [
         "📚 Create & Manage Quizzes (Class & Topic Controls)", 
         "👥 Master Student Directory (Excel/Manual)", 
@@ -615,19 +555,16 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # --- SECTION 1: CREATE & MANAGE QUIZZES ---
+    # SECTION 1: CREATE & MANAGE QUIZZES
     if admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
         st.subheader("Existing Quizzes & Controls")
-        
         with st.expander("➕ Create New Quiz", expanded=False):
             with st.form("new_quiz_form"):
                 c_cls1, c_cls2 = st.columns(2)
                 target_class_choice = c_cls1.selectbox("Select Class:", ["Class 11", "Class 12", "Class 9", "Class 10", "Other"])
                 topic_name = c_cls2.text_input("Topic / Chapter Name (e.g., Kinematics):", value="Units & Measurement")
-                
                 q_title = st.text_input("Quiz Title:", value=f"{target_class_choice} - {topic_name}")
                 q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
-                
                 c_d1, c_d2 = st.columns(2)
                 cur_ist = get_ist_now()
                 start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
@@ -657,7 +594,6 @@ if selected_portal == "⚙️ Admin Control Center":
                             st.error("A quiz with this title already exists.")
 
         st.markdown("---")
-        
         if not quizzes_df.empty:
             for _, r in quizzes_df.iterrows():
                 with st.container():
@@ -711,10 +647,8 @@ if selected_portal == "⚙️ Admin Control Center":
                             cur_cls_idx = class_options.index(cls_val) if cls_val in class_options else 0
                             ed_cls = ce1.selectbox("Class:", class_options, index=cur_cls_idx, key=f"cls_{r['id']}")
                             ed_topic = ce2.text_input("Topic / Chapter Name:", value=top_val, key=f"top_{r['id']}")
-                            
                             ed_title = st.text_input("Quiz Title:", value=r['quiz_title'], key=f"t_{r['id']}")
                             ed_dur = st.number_input("Exam Duration (Minutes):", min_value=1, max_value=300, value=int(r['duration_minutes']), key=f"d_{r['id']}")
-                            
                             c1, c2 = st.columns(2)
                             ed_s_date = c1.date_input("Start Date (IST):", value=cur_s_dt.date(), key=f"sd_{r['id']}")
                             ed_s_time = c1.time_input("Start Time (IST):", value=cur_s_dt.time(), key=f"st_{r['id']}")
@@ -724,7 +658,6 @@ if selected_portal == "⚙️ Admin Control Center":
                             if st.form_submit_button("💾 Save Changes", type="primary"):
                                 new_start_str = f"{ed_s_date} {ed_s_time.strftime('%H:%M')}"
                                 new_end_str = f"{ed_e_date} {ed_e_time.strftime('%H:%M')}"
-                                
                                 conn = get_db()
                                 conn.execute('''
                                     UPDATE quizzes 
@@ -736,29 +669,25 @@ if selected_portal == "⚙️ Admin Control Center":
                                 st.success(f"'{ed_title}' updated successfully!")
                                 time.sleep(1)
                                 st.rerun()
-
                     st.divider()
         else:
             st.info("No quizzes created yet. Use the button above to create one.")
 
-    # --- SECTION 2: MASTER STUDENTS ---
+    # SECTION 2: MASTER STUDENTS
     elif admin_tab == "👥 Master Student Directory (Excel/Manual)":
         st.subheader("👥 Master Student Directory")
         st.markdown("**Tip:** You can keep `students.xlsx` (`name`, `sr_no`) in the repository for permanent automatic loading.")
-        
         with st.expander("📂 Bulk Upload via Web", expanded=True):
             uploaded_master_stu = st.file_uploader("Upload Excel (.xlsx / .csv):", type=["xlsx", "csv"])
             if uploaded_master_stu:
                 try:
                     df = pd.read_csv(uploaded_master_stu) if uploaded_master_stu.name.endswith(".csv") else pd.read_excel(uploaded_master_stu)
                     df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
-                    
                     name_col = next((col for col in df.columns if col in ["name", "student_name", "student", "studentname"]), df.columns[0])
                     sr_col = next((col for col in df.columns if col in ["sr_no", "srno", "sr", "roll_no", "rollno", "id", "password"]), df.columns[1] if len(df.columns) > 1 else df.columns[0])
                     
                     st.write("File Preview:")
                     st.dataframe(df[[name_col, sr_col]].head(5))
-                    
                     if st.button("🚀 Import All Students"):
                         conn = get_db()
                         cur = conn.cursor()
@@ -767,7 +696,6 @@ if selected_portal == "⚙️ Admin Control Center":
                             s_name = clean_text(r[name_col])
                             s_sr = clean_sr_no(r[sr_col])
                             s_norm = s_name.lower()
-                            
                             if s_name and s_sr:
                                 try:
                                     cur.execute('''
@@ -791,18 +719,16 @@ if selected_portal == "⚙️ Admin Control Center":
         conn = get_db()
         master_df = pd.read_sql_query("SELECT student_name AS 'Student Name', sr_no AS 'SR No (Password)' FROM master_students ORDER BY student_name", conn)
         conn.close()
-        
         if master_df.empty:
             st.info("No registered students found.")
         else:
             st.write(f"Total Enrolled: **{len(master_df)} Students**")
             st.dataframe(master_df, use_container_width=True)
 
-    # --- SECTION 3: QUESTION BANK ---
+    # SECTION 3: QUESTION BANK
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Question Bank Management")
         st.markdown("**Tip:** Uploading `questions_11.xlsx` and `questions_12.xlsx` to the repository will automatically populate questions.")
-        
         if quizzes_df.empty:
             st.info("Please create a quiz first.")
         else:
@@ -850,10 +776,9 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.rerun()
                 st.divider()
 
-    # --- SECTION 4: STUDENT RESULTS & MERIT PDF ---
+    # SECTION 4: STUDENT RESULTS & MERIT PDF
     elif admin_tab == "📊 Student Results & Controls":
         st.subheader("Student Submissions & Performance Sheet")
-        
         if quizzes_df.empty:
             st.info("Please create a quiz first.")
         else:
@@ -861,12 +786,41 @@ if selected_portal == "⚙️ Admin Control Center":
             sel_q_label = st.selectbox("Select Quiz to View Results:", list(quiz_options.keys()))
             sel_q_id = quiz_options[sel_q_label]
             
-            # Fetch quiz metadata
             conn = get_db()
             quiz_info_row = conn.execute("SELECT * FROM quizzes WHERE id = ?", (sel_q_id,)).fetchone()
             quiz_meta = dict(quiz_info_row) if quiz_info_row else {}
             
-            # Sort High to Low: Topper at the top
+            # Recalculate Previous 0 Scores Automatically Using Smart Checker
+            try:
+                # Get all responses for this quiz
+                resp_rows = conn.execute('''
+                    SELECT r.id, r.selected_option, r.correct_option, q.option_a, q.option_b, q.option_c, q.option_d, r.sr_no
+                    FROM student_responses r
+                    JOIN questions q ON r.question_id = q.id
+                    WHERE r.quiz_id = ?
+                ''', (sel_q_id,)).fetchall()
+                
+                # Update correctness in responses table
+                for rr in resp_rows:
+                    is_corr = 1 if is_answer_correct(rr['selected_option'], rr['correct_option'], rr['option_a'], rr['option_b'], rr['option_c'], rr['option_d']) else 0
+                    conn.execute("UPDATE student_responses SET is_correct = ? WHERE id = ?", (is_corr, rr['id']))
+                
+                # Update total scores in submissions table
+                conn.execute('''
+                    UPDATE submissions
+                    SET score = (
+                        SELECT COALESCE(SUM(is_correct), 0)
+                        FROM student_responses 
+                        WHERE student_responses.quiz_id = submissions.quiz_id 
+                          AND student_responses.sr_no = submissions.sr_no
+                    )
+                    WHERE quiz_id = ?
+                ''', (sel_q_id,))
+                conn.commit()
+            except Exception:
+                pass
+            
+            # Fetch high-to-low submissions
             try:
                 subs_df = pd.read_sql_query(
                     "SELECT student_name, sr_no, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY score DESC, submitted_at ASC", 
@@ -879,18 +833,14 @@ if selected_portal == "⚙️ Admin Control Center":
             if subs_df.empty:
                 st.info("No submissions found for this quiz.")
             else:
-                # Add Rank Column for display
                 subs_df_display = subs_df.copy()
                 subs_df_display.insert(0, "Rank", range(1, len(subs_df_display) + 1))
                 
                 st.write("### 🏆 Merit List (Ranked from Highest to Lowest Score)")
                 st.dataframe(subs_df_display, use_container_width=True)
                 
-                # Action Buttons
                 c_d1, c_d2 = st.columns([1, 1])
-                
                 with c_d1:
-                    # PDF Download Button
                     pdf_bytes = generate_merit_pdf(subs_df, quiz_meta)
                     st.download_button(
                         label="📄 Download Official Merit List (PDF)",
@@ -899,9 +849,7 @@ if selected_portal == "⚙️ Admin Control Center":
                         mime="application/pdf",
                         type="primary"
                     )
-                
                 with c_d2:
-                    # CSV Download Button
                     csv_data = subs_df_display.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         label="📥 Download Results (CSV)",
@@ -922,10 +870,9 @@ if selected_portal == "⚙️ Admin Control Center":
                     time.sleep(1)
                     st.rerun()
 
-    # --- SECTION 5: BACKUP & RESTORE ---
+    # SECTION 5: BACKUP & RESTORE
     elif admin_tab == "💾 Full Database Backup & Restore (Excel)":
         st.subheader("💾 Full Database Backup & Restore")
-        
         conn = get_db()
         stu_export = pd.read_sql_query("SELECT * FROM master_students", conn)
         q_export = pd.read_sql_query("SELECT * FROM quizzes", conn)
@@ -953,7 +900,6 @@ if selected_portal == "⚙️ Admin Control Center":
         st.divider()
         st.write("### 📤 Restore Data from Excel Backup")
         uploaded_backup = st.file_uploader("Upload previous Backup Excel file:", type=["xlsx"])
-        
         if uploaded_backup:
             if st.button("🚀 Restore Complete Data Now"):
                 try:
@@ -1039,7 +985,6 @@ else:
                 sel_quiz_label = st.selectbox("Select Quiz / Topic:", list(quiz_opts.keys()))
                 in_name = st.text_input("Student Name (Registered):", placeholder="Enter your full name")
                 in_pwd = st.text_input("Password (Your SR No):", type="password")
-                
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
                 
                 if submit_login:
@@ -1106,15 +1051,48 @@ else:
     st.title(f"📝 {quiz_title_val}")
     st.markdown(f"##### 📖 Topic: **{quiz_topic_val}** | Class: **{quiz_class_val}**")
 
-    # Check previous submission
+    # -------------------------------------------------------------
+    # AGAR STUDENT SUBMIT KAR CHUKA HAI (FULL DETAILED SCORECARD)
+    # -------------------------------------------------------------
     conn = get_db()
     sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
     conn.close()
 
     if sub_check:
-        st.success(f"✅ {student_name}, your test has already been successfully submitted!")
-        st.metric("Score", f"{sub_check['score']} / {sub_check['total_questions']}")
-        st.metric("Tab Switches Recorded", f"{sub_check['tab_switches']} times")
+        st.success(f"✅ {student_name}, your exam has been successfully submitted!")
+        
+        c_m1, c_m2, c_m3 = st.columns(3)
+        c_m1.metric("Final Score", f"{sub_check['score']} / {sub_check['total_questions']}")
+        pct = (sub_check['score'] / sub_check['total_questions'] * 100) if sub_check['total_questions'] > 0 else 0
+        c_m2.metric("Percentage", f"{pct:.1f}%")
+        c_m3.metric("Tab Switches Recorded", f"{sub_check['tab_switches']} times")
+        
+        st.markdown("---")
+        st.subheader("📋 Your Response Sheet & Answer Key")
+        
+        conn = get_db()
+        st_res = pd.read_sql_query(
+            "SELECT question_text, selected_option, correct_option, is_correct FROM student_responses WHERE quiz_id = ? AND LOWER(student_name) = ?",
+            conn, params=(quiz_id, student_name.lower())
+        )
+        conn.close()
+        
+        if not st_res.empty:
+            for idx, r_row in st_res.iterrows():
+                is_right = (r_row['is_correct'] == 1)
+                status_icon = "✅ Correct" if is_right else "❌ Incorrect"
+                badge_color = "#28a745" if is_right else "#dc3545"
+                
+                st.markdown(f"""
+                <div style="border-left: 5px solid {badge_color}; padding: 10px 14px; margin-bottom: 12px; background-color: #f8f9fa; border-radius: 6px;">
+                    <b style="font-size: 15px;">Q{idx+1}. {r_row['question_text']}</b><br>
+                    <span style="font-size: 14px;">Your Choice: <b>{r_row['selected_option']}</b> &nbsp; <span style="color: {badge_color}; font-weight: bold;">({status_icon})</span></span><br>
+                    <span style="color: #1e7e34; font-size: 14px; font-weight: 600;">Correct Answer: {r_row['correct_option']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("Detailed responses are not available.")
+            
         st.stop()
 
     questions_df = get_questions_by_quiz(quiz_id)
@@ -1122,7 +1100,7 @@ else:
         st.info("No questions have been added to this quiz yet.")
         st.stop()
 
-    # Attempt check in DB
+    # Attempt Verification & Persistence
     norm_name = student_name.lower()
     conn = get_db()
     attempt_row = conn.execute("SELECT start_epoch FROM quiz_attempts WHERE quiz_id = ? AND normalized_name = ?", (quiz_id, norm_name)).fetchone()
@@ -1186,7 +1164,9 @@ else:
                 q_id_num = row['id']
                 sel_opt = answers.get(q_id_num)
                 correct_opt = row['correct_option']
-                is_correct = 1 if (sel_opt == correct_opt) else 0
+                
+                # Smart Comparison: Letters (A/B/C/D) and direct full texts match correctly
+                is_correct = 1 if is_answer_correct(sel_opt, correct_opt, row['option_a'], row['option_b'], row['option_c'], row['option_d']) else 0
                 if is_correct:
                     score += 1
                     
