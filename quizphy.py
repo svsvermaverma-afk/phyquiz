@@ -121,7 +121,7 @@ def clean_sr_no(sr_val):
         sr_str = sr_str[:-2]
     return sr_str
 
-# Smart Answer Matcher Engine (To prevent 0 Score Bug)
+# Smart Answer Matcher Engine
 def is_answer_correct(selected, correct, opt_a, opt_b, opt_c, opt_d):
     if not selected:
         return False
@@ -326,7 +326,6 @@ def init_db():
 
 init_db()
 
-# DB Helpers
 def get_all_quizzes():
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM quizzes", conn)
@@ -463,9 +462,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     function triggerAutoSubmit() {{
         let buttons = window.parent.document.querySelectorAll('button');
         buttons.forEach(btn => {{
-            if (btn.innerText.includes("Submit Final Answers")) {{
-                btn.click();
-            }}
+            if (btn.innerText.includes("Submit Final Answers")) {{ btn.click(); }}
         }});
     }}
 
@@ -725,7 +722,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.write(f"Total Enrolled: **{len(master_df)} Students**")
             st.dataframe(master_df, use_container_width=True)
 
-    # SECTION 3: QUESTION BANK
+    # SECTION 3: QUESTION BANK (Fixed Error Here)
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Question Bank Management")
         st.markdown("**Tip:** Uploading `questions_11.xlsx` and `questions_12.xlsx` to the repository will automatically populate questions.")
@@ -751,7 +748,15 @@ if selected_portal == "⚙️ Admin Control Center":
                                 cur.execute('''
                                     INSERT INTO questions (quiz_id, question, option_a, option_b, option_c, option_d, correct_option)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                                ''', (sel_q_id, str(r["question"]).strip(), str(r["option_a"]).strip(), str(r["option_b"]).strip(), str(row["option_c"]).strip(), str(r["option_d"]).strip(), str(r["correct_option"]).strip()))
+                                ''', (
+                                    sel_q_id, 
+                                    str(r["question"]).strip(), 
+                                    str(r["option_a"]).strip(), 
+                                    str(r["option_b"]).strip(), 
+                                    str(r["option_c"]).strip(),  # Fixed variable here
+                                    str(r["option_d"]).strip(), 
+                                    str(r["correct_option"]).strip()
+                                ))
                                 cnt += 1
                             conn.commit()
                             conn.close()
@@ -790,9 +795,8 @@ if selected_portal == "⚙️ Admin Control Center":
             quiz_info_row = conn.execute("SELECT * FROM quizzes WHERE id = ?", (sel_q_id,)).fetchone()
             quiz_meta = dict(quiz_info_row) if quiz_info_row else {}
             
-            # Recalculate Previous 0 Scores Automatically Using Smart Checker
+            # Recalculate Previous 0 Scores Automatically
             try:
-                # Get all responses for this quiz
                 resp_rows = conn.execute('''
                     SELECT r.id, r.selected_option, r.correct_option, q.option_a, q.option_b, q.option_c, q.option_d, r.sr_no
                     FROM student_responses r
@@ -800,12 +804,10 @@ if selected_portal == "⚙️ Admin Control Center":
                     WHERE r.quiz_id = ?
                 ''', (sel_q_id,)).fetchall()
                 
-                # Update correctness in responses table
                 for rr in resp_rows:
                     is_corr = 1 if is_answer_correct(rr['selected_option'], rr['correct_option'], rr['option_a'], rr['option_b'], rr['option_c'], rr['option_d']) else 0
                     conn.execute("UPDATE student_responses SET is_correct = ? WHERE id = ?", (is_corr, rr['id']))
                 
-                # Update total scores in submissions table
                 conn.execute('''
                     UPDATE submissions
                     SET score = (
@@ -820,7 +822,6 @@ if selected_portal == "⚙️ Admin Control Center":
             except Exception:
                 pass
             
-            # Fetch high-to-low submissions
             try:
                 subs_df = pd.read_sql_query(
                     "SELECT student_name, sr_no, score, total_questions, tab_switches, status, submitted_at FROM submissions WHERE quiz_id = ? ORDER BY score DESC, submitted_at ASC", 
@@ -1051,9 +1052,7 @@ else:
     st.title(f"📝 {quiz_title_val}")
     st.markdown(f"##### 📖 Topic: **{quiz_topic_val}** | Class: **{quiz_class_val}**")
 
-    # -------------------------------------------------------------
-    # AGAR STUDENT SUBMIT KAR CHUKA HAI (FULL DETAILED SCORECARD)
-    # -------------------------------------------------------------
+    # Full Detailed Scorecard
     conn = get_db()
     sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
     conn.close()
@@ -1100,7 +1099,6 @@ else:
         st.info("No questions have been added to this quiz yet.")
         st.stop()
 
-    # Attempt Verification & Persistence
     norm_name = student_name.lower()
     conn = get_db()
     attempt_row = conn.execute("SELECT start_epoch FROM quiz_attempts WHERE quiz_id = ? AND normalized_name = ?", (quiz_id, norm_name)).fetchone()
@@ -1165,7 +1163,6 @@ else:
                 sel_opt = answers.get(q_id_num)
                 correct_opt = row['correct_option']
                 
-                # Smart Comparison: Letters (A/B/C/D) and direct full texts match correctly
                 is_correct = 1 if is_answer_correct(sel_opt, correct_opt, row['option_a'], row['option_b'], row['option_c'], row['option_d']) else 0
                 if is_correct:
                     score += 1
