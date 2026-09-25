@@ -255,7 +255,7 @@ def init_db():
     
     c.execute('''
         INSERT OR IGNORE INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, 1)
+        VALUES (?, ?, ?, ?, ?, ?, 0)
     ''', ("Class 12", "Electrostatics & Magnetism", "Class 12 - Physics Exam", 20, default_start, default_end))
     
     c.execute("SELECT id FROM quizzes WHERE quiz_title = ?", ("Class 11 - Physics Exam",))
@@ -580,7 +580,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             c = conn.cursor()
                             c.execute('''
                                 INSERT INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-                                VALUES (?, ?, ?, ?, ?, ?, 1)
+                                VALUES (?, ?, ?, ?, ?, ?, 0)
                             ''', (target_class_choice, c_top, c_title, q_dur, start_str, end_str))
                             conn.commit()
                             conn.close()
@@ -598,13 +598,16 @@ if selected_portal == "⚙️ Admin Control Center":
                     cls_val = r['target_class'] if 'target_class' in r and pd.notna(r['target_class']) else 'Class 11'
                     top_val = r['topic'] if 'topic' in r and pd.notna(r['topic']) else 'General Physics'
                     st.markdown(f"🏷️ **Class:** `{cls_val}` | 📖 **Topic:** `{top_val}`")
-                    st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active' if r['is_active'] == 1 else 'Disabled'}`")
+                    st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active (LIVE)' if r['is_active'] == 1 else 'Disabled'}`")
                     st.markdown(f"🕒 **Valid From:** `{r['start_datetime']}` **To:** `{r['end_datetime']}`")
                     
                     col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
                     if col_b1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
+                        # Single Live Quiz Rule: Agar kisi ko active kar rahe hain, to baki sabko disable karein
+                        if new_status == 1:
+                            conn.execute("UPDATE quizzes SET is_active = 0")
                         conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
                         conn.commit()
                         conn.close()
@@ -614,10 +617,12 @@ if selected_portal == "⚙️ Admin Control Center":
                         now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
                         now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
                         conn = get_db()
+                        # Baaki saare quizzes ko inactive karke sirf isko live karein
+                        conn.execute("UPDATE quizzes SET is_active = 0")
                         conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
                         conn.commit()
                         conn.close()
-                        st.success("Quiz is now LIVE immediately!")
+                        st.success("Sirf yeh Quiz abhi se LIVE kar diya gaya hai!")
                         time.sleep(1)
                         st.rerun()
                     
@@ -722,7 +727,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.write(f"Total Enrolled: **{len(master_df)} Students**")
             st.dataframe(master_df, use_container_width=True)
 
-    # SECTION 3: QUESTION BANK (Fixed Error Here)
+    # SECTION 3: QUESTION BANK
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Question Bank Management")
         st.markdown("**Tip:** Uploading `questions_11.xlsx` and `questions_12.xlsx` to the repository will automatically populate questions.")
@@ -753,7 +758,7 @@ if selected_portal == "⚙️ Admin Control Center":
                                     str(r["question"]).strip(), 
                                     str(r["option_a"]).strip(), 
                                     str(r["option_b"]).strip(), 
-                                    str(r["option_c"]).strip(),  # Fixed variable here
+                                    str(r["option_c"]).strip(),
                                     str(r["option_d"]).strip(), 
                                     str(r["correct_option"]).strip()
                                 ))
@@ -951,7 +956,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.error(f"Restore failed: {e}")
 
 # ==========================================
-# 5. STUDENT EXAM PORTAL
+# 5. STUDENT EXAM PORTAL (ONLY LIVE QUIZ SHOWN)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -962,6 +967,7 @@ else:
         st.session_state.selected_quiz_id = None
 
     quizzes_df = get_all_quizzes()
+    # SIRF LIVE/ACTIVE QUIZ FILTER HOGA
     active_quizzes = quizzes_df[quizzes_df['is_active'] == 1] if not quizzes_df.empty else pd.DataFrame()
 
     if active_quizzes.empty:
@@ -971,7 +977,7 @@ else:
     # Student Login Form
     if not st.session_state.student_name or not st.session_state.selected_quiz_id:
         st.subheader("🎓 Student Examination Login Portal")
-        st.markdown("Select your Quiz/Topic, enter your **Registered Full Name** and your **SR No** as Password.")
+        st.markdown("Enter your **Registered Full Name** and your **SR No** as Password to enter.")
         
         quiz_opts = {}
         for _, row in active_quizzes.iterrows():
@@ -983,7 +989,14 @@ else:
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("student_login_form"):
-                sel_quiz_label = st.selectbox("Select Quiz / Topic:", list(quiz_opts.keys()))
+                # Single live quiz hone par student ko confusion nahi hoga
+                if len(quiz_opts) == 1:
+                    live_label = list(quiz_opts.keys())[0]
+                    st.info(f"🔴 **Live Exam:** {live_label}")
+                    sel_quiz_label = live_label
+                else:
+                    sel_quiz_label = st.selectbox("Select Live Quiz / Topic:", list(quiz_opts.keys()))
+                
                 in_name = st.text_input("Student Name (Registered):", placeholder="Enter your full name")
                 in_pwd = st.text_input("Password (Your SR No):", type="password")
                 submit_login = st.form_submit_button("Enter Exam Portal", type="primary")
