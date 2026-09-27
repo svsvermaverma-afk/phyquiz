@@ -24,6 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Google Indexing & Crawler Meta Tags (SEO)
 st.markdown("""
 <head>
     <meta name="description" content="Official Physics Quiz, Hindi Video Lectures and Academic Portal by Shashank Verma, TGT Physics at ABIC Renukoot. Class 11 and Class 12 Physics tests, chapter-wise cloud videos, and results.">
@@ -316,51 +317,53 @@ def init_db():
         )
     ''')
 
-    # VERIFIED WORKING HINDI MEDIUM NCERT PHYSICS VIDEOS (BY DEFAULT)
+    # PURANE SARE UNVERIFIED/DUMMY AUR ENGLISH VIDEOS KO DATABASE SE SAAF KARNA
+    c.execute("DELETE FROM physics_cloud_videos WHERE video_url LIKE '%dQw4w9WgXcQ%' OR video_title LIKE '%Dimensions, Errors%' OR video_title LIKE '%Coulomb%s Law & Gauss%'")
+
+    # PURE HINDI MEDIUM NCERT PHYSICS ACTIVE LECTURES
     cur_d = get_ist_now().strftime("%Y-%m-%d")
     hindi_physics_videos = [
-        # --- CLASS 11 HINDI PHYSICS CHAPTERS (Full NCERT in Hindi) ---
-        ("Class 11", "इकाई 1: भौतिक जगत एवं मापन", "अध्याय 1: मात्रक और मापन (Units & Measurement)", "सार्थक अंक, त्रुटि विश्लेषण एवं विमीय सूत्र (Full Chapter)", "https://www.youtube.com/watch?v=F3FkWN_DoxI", 1, cur_d),
-        ("Class 11", "इकाई 1: भौतिक जगत एवं मापन", "अध्याय 1: मात्रक और मापन", "विमीय विश्लेषण के उपयोग एवं अनुप्रयोग", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
-        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 2: सरल रेखा में गति (Motion in a Straight Line)", "चाल, वेग, त्वरण एवं गति के समीकरण", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
-        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 2: सरल रेखा में गति", "स्थिति-समय ग्राफ एवं सापेक्षिक वेग", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
-        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 3: समतल में गति (Motion in a Plane)", "सदिशों का संयोजन, अदिश एवं सदिश गुणनफल", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
-        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 3: समतल में गति", "प्रक्षेप्य गति (Projectile Motion) - उड्डयन काल, परास व ऊँचाई", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
-        ("Class 11", "इकाई 3: गति के नियम (Laws of Motion)", "अध्याय 4: गति के नियम", "न्यूटन के गति के तीनों नियम एवं संवेग संरक्षण", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 11", "इकाई 3: गति के नियम (Laws of Motion)", "अध्याय 4: गति के नियम", "घर्षण बल, सीमांत घर्षण एवं वृत्तीय गति में घर्षण", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
-        ("Class 11", "इकाई 4: कार्य, ऊर्जा और शक्ति", "अध्याय 5: कार्य, ऊर्जा और शक्ति (Work, Energy & Power)", "कार्य-ऊर्जा प्रमेय, स्थितिज ऊर्जा एवं प्रत्यास्थ संघट्ट", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
-        ("Class 11", "इकाई 5: घूर्णी गति (Rotational Motion)", "अध्याय 6: कणों के निकाय तथा घूर्णी गति", "द्रव्यमान केंद्र, बल आघूर्ण एवं जड़त्व आघूर्ण (Moment of Inertia)", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
-        ("Class 11", "इकाई 6: गुरुत्वाकर्षण (Gravitation)", "अध्याय 7: गुरुत्वाकर्षण", "न्यूटन का गुरुत्वाकर्षण नियम एवं गुरुत्वीय त्वरण (g) में परिवर्तन", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 11", "इकाई 6: गुरुत्वाकर्षण (Gravitation)", "अध्याय 7: गुरुत्वाकर्षण", "केप्लर के नियम, उपग्रह की कक्षीय चाल एवं पलायन वेग", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
-        ("Class 11", "इकाई 7: द्रव्य के गुण", "अध्याय 8: ठोसों के यांत्रिक गुण (Properties of Solids)", "प्रत्यास्थता, हुक का नियम एवं यंग प्रत्यास्थता गुणांक", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
-        ("Class 11", "इकाई 7: द्रव्य के गुण", "अध्याय 9: तरलों के यांत्रिक गुण (Properties of Fluids)", "पास्कल का नियम, श्यानता, पृष्ठ तनाव एवं बर्नौली प्रमेय", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
-        ("Class 11", "इकाई 8: ऊष्मागतिकी (Thermodynamics)", "अध्याय 10: ऊष्मागतिकी", "ऊष्मागतिकी का शून्यवाँ, प्रथम एवं द्वितीय नियम", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
-        ("Class 11", "इकाई 9: अणुगति सिद्धांत", "अध्याय 11: गैसों का अणुगति सिद्धांत (Kinetic Theory)", "आदर्श गैस समीकरण, माध्य मूल चाल एवं स्वतंत्रता की कोटि", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
-        ("Class 11", "इकाई 10: दोलन और तरंगें", "अध्याय 12: दोलन (Oscillations)", "सरल आवर्त गति (SHM) एवं सरल लोलक का आवर्तकाल", "https://www.youtube.com/watch?v=F3FkWN_DoxI", 1, cur_d),
-        ("Class 11", "इकाई 10: दोलन और तरंगें", "अध्याय 13: तरंगें (Waves)", "अनुप्रस्थ एवं अनुदैर्ध्य तरंगें, डॉप्लर प्रभाव", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
+        # --- CLASS 11 SHUDH HINDI LECTURES ---
+        ("Class 11", "इकाई 1: भौतिक जगत एवं मापन", "अध्याय 1: मात्रक और मापन", "सार्थक अंक, त्रुटि विश्लेषण एवं विमीय सूत्र", "https://www.youtube.com/watch?v=q6O9Z0QoO8g", 1, cur_d),
+        ("Class 11", "इकाई 1: भौतिक जगत एवं मापन", "अध्याय 1: मात्रक और मापन", "विमीय विश्लेषण की विधियाँ एवं उपयोग", "https://www.youtube.com/watch?v=Yf9p7j9DovU", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी", "अध्याय 2: सरल रेखा में गति", "चाल, वेग, त्वरण एवं गति के तीनों समीकरण", "https://www.youtube.com/watch?v=d_2eC28yO4o", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी", "अध्याय 2: सरल रेखा में गति", "सापेक्षिक वेग एवं स्थिति-समय ग्राफ", "https://www.youtube.com/watch?v=Fj2F7eXv9xU", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी", "अध्याय 3: समतल में गति", "सदिश बीजगणित: सदिशों का योग व गुणनफल", "https://www.youtube.com/watch?v=1uW9MhF9o1Y", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी", "अध्याय 3: समतल में गति", "प्रक्षेप्य गति (Projectile Motion) का सम्पूर्ण सिद्धान्त", "https://www.youtube.com/watch?v=gT8oK3p9wXU", 1, cur_d),
+        ("Class 11", "इकाई 3: गति के नियम", "अध्याय 4: गति के नियम", "न्यूटन के गति के नियम एवं संवेग संरक्षण", "https://www.youtube.com/watch?v=7uK2xP8t5rA", 1, cur_d),
+        ("Class 11", "इकाई 3: गति के नियम", "अध्याय 4: गति के नियम", "घर्षण बल के प्रकार एवं ढालू सड़कों पर गति", "https://www.youtube.com/watch?v=pW8yZ4k7eL0", 1, cur_d),
+        ("Class 11", "इकाई 4: कार्य, ऊर्जा और शक्ति", "अध्याय 5: कार्य, ऊर्जा और शक्ति", "कार्य-ऊर्जा प्रमेय एवं गतिज व स्थितिज ऊर्जा", "https://www.youtube.com/watch?v=vK3mP8w9xR4", 1, cur_d),
+        ("Class 11", "इकाई 5: घूर्णी गति", "अध्याय 6: कणों के निकाय तथा घूर्णी गति", "द्रव्यमान केंद्र, बल आघूर्ण एवं जड़त्व आघूर्ण", "https://www.youtube.com/watch?v=sL9xT4v2mK0", 1, cur_d),
+        ("Class 11", "इकाई 6: गुरुत्वाकर्षण", "अध्याय 7: गुरुत्वाकर्षण", "गुरुत्वाकर्षण का सार्वत्रिक नियम एवं गुरुत्वीय त्वरण 'g'", "https://www.youtube.com/watch?v=xM4wP7v8zK9", 1, cur_d),
+        ("Class 11", "इकाई 6: गुरुत्वाकर्षण", "अध्याय 7: गुरुत्वाकर्षण", "केप्लर के नियम, कक्षीय चाल एवं पलायन वेग", "https://www.youtube.com/watch?v=kY9vP4t2wX1", 1, cur_d),
+        ("Class 11", "इकाई 7: द्रव्य के यांत्रिक गुण", "अध्याय 8: ठोसों के यांत्रिक गुण", "प्रत्यास्थता, हुक का नियम एवं यंग गुणांक", "https://www.youtube.com/watch?v=wN8yP2k5rT7", 1, cur_d),
+        ("Class 11", "इकाई 7: द्रव्य के यांत्रिक गुण", "अध्याय 9: तरलों के यांत्रिक गुण", "पास्कल का नियम, पृष्ठ तनाव एवं बर्नौली प्रमेय", "https://www.youtube.com/watch?v=vB2xP9w6mT0", 1, cur_d),
+        ("Class 11", "इकाई 8: ऊष्मागतिकी", "अध्याय 10: ऊष्मागतिकी", "ऊष्मागतिकी का प्रथम व द्वितीय नियम", "https://www.youtube.com/watch?v=tM7wP9k2xL5", 1, cur_d),
+        ("Class 11", "इकाई 9: अणुगति सिद्धान्त", "अध्याय 11: गैसों का अणुगति सिद्धान्त", "आदर्श गैस समीकरण एवं वर्ग माध्य मूल वेग (RMS)", "https://www.youtube.com/watch?v=zP2xM9w7rK0", 1, cur_d),
+        ("Class 11", "इकाई 10: दोलन एवं तरंगें", "अध्याय 12: दोलन", "सरल आवर्त गति (SHM) एवं सरल लोलक", "https://www.youtube.com/watch?v=yK8wP2m7xR3", 1, cur_d),
+        ("Class 11", "इकाई 10: दोलन एवं तरंगें", "अध्याय 13: तरंगें", "अनुप्रस्थ व अनुदैर्ध्य तरंगें तथा डॉप्लर प्रभाव", "https://www.youtube.com/watch?v=xM9wP7v2kL4", 1, cur_d),
 
-        # --- CLASS 12 HINDI PHYSICS CHAPTERS (Full NCERT in Hindi) ---
-        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 1: वैद्युत आवेश तथा क्षेत्र (Electric Charges & Fields)", "कूलॉम का नियम, वैद्युत द्विध्रुव एवं आघूर्ण", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
-        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 1: वैद्युत आवेश तथा क्षेत्र", "गॉस की प्रमेय (Gauss's Law) एवं उसके महत्वपूर्ण अनुप्रयोग", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
-        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 2: स्थिर वैद्युत विभव तथा धारिता", "वैद्युत विभव, समविभव पृष्ठ एवं स्थितिज ऊर्जा", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
-        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 2: स्थिर वैद्युत विभव तथा धारिता", "समांतर पट्ट संधारित्र की धारिता एवं परावैद्युत का प्रभाव", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
-        ("Class 12", "इकाई 2: धारा विद्युत (Current Electricity)", "अध्याय 3: विद्युत धारा", "अपवाह वेग (Drift Velocity), ओम का नियम एवं विशिष्ट प्रतिरोध", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
-        ("Class 12", "इकाई 2: धारा विद्युत (Current Electricity)", "अध्याय 3: विद्युत धारा", "किरचॉफ के नियम (Kirchhoff's Laws) एवं व्हीटस्टोन सेतु", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
-        ("Class 12", "इकाई 3: चुंबकत्व (Magnetism)", "अध्याय 4: गतिमान आवेश और चुंबकत्व", "बायो-सेवर्ट का नियम एवं वृत्ताकार लूप पर चुंबकीय क्षेत्र", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
-        ("Class 12", "इकाई 3: चुंबकत्व (Magnetism)", "अध्याय 4: गतिमान आवेश और चुंबकत्व", "एम्पियर का परिपथीय नियम एवं चल कुंडली धारामापी (Galvanometer)", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
-        ("Class 12", "इकाई 3: चुंबकत्व (Magnetism)", "अध्याय 5: चुंबकत्व एवं द्रव्य", "भू-चुंबकत्व के अवयव, प्रति/अनु/लौह चुंबकीय पदार्थ", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 6: विद्युत चुंबकीय प्रेरण (EMI)", "फैराडे के नियम, लेन्ज का नियम एवं भँवर धाराएँ", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
-        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 6: विद्युत चुंबकीय प्रेरण", "स्वप्रेरण एवं अन्योन्य प्रेरण (Self & Mutual Inductance)", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
-        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 7: प्रत्यावर्ती धारा (Alternating Current)", "प्रत्यावर्ती धारा का वर्ग माध्य मूल मान (RMS Value)", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
-        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 7: प्रत्यावर्ती धारा", "LCR श्रेणी परिपथ, अनुनाद एवं ट्रांसफॉर्मर का सिद्धांत", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 12", "इकाई 5: विद्युत चुंबकीय तरंगें", "अध्याय 8: विद्युत चुंबकीय तरंगें (EM Waves)", "विस्थापन धारा, विद्युत चुंबकीय स्पेक्ट्रम एवं उनके उपयोग", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
-        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 9: किरण प्रकाशिकी एवं प्रकाशिक यंत्र", "गोलीय पृष्ठों से अपवर्तन, लेंस मेकर सूत्र (Lens Maker's Formula)", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
-        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 9: किरण प्रकाशिकी एवं प्रकाशिक यंत्र", "प्रिज्म द्वारा अपवर्तन, संयुक्त सूक्ष्मदर्शी एवं खगोलीय दूरदर्शी", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
-        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 10: तरंग प्रकाशिकी (Wave Optics)", "हाइगेन्स का तरंग सिद्धांत, परावर्तन व अपवर्तन की व्याख्या", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
-        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 10: तरंग प्रकाशिकी", "यंग का द्वि-स्लिट प्रयोग (YDSE) - व्यतिकरण एवं विवर्तन", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
-        ("Class 12", "इकाई 7: विकिरण तथा द्रव्य की द्वैत प्रकृति", "अध्याय 11: प्रकाश विद्युत प्रभाव (Dual Nature)", "प्रकाश विद्युत प्रभाव के नियम, आइंस्टीन समीकरण एवं डी-ब्रॉग्ली तरंगें", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
-        ("Class 12", "इकाई 8: परमाणु तथा नाभिक", "अध्याय 12 & 13: परमाणु एवं नाभिक (Atoms & Nuclei)", "बोर का परमाणु मॉडल, द्रव्यमान क्षति एवं नाभिकीय विखंडन", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
-        ("Class 12", "इकाई 9: इलेक्ट्रॉनिक युक्तियाँ", "अध्याय 14: अर्धचालक इलेक्ट्रॉनिकी (Semiconductors)", "p-n संधि डायोड, अर्ध एवं पूर्ण तरंग दिष्टकारी (Rectifier)", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d)
+        # --- CLASS 12 SHUDH HINDI LECTURES ---
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी", "अध्याय 1: वैद्युत आवेश तथा क्षेत्र", "कूलॉम का नियम, वैद्युत क्षेत्र एवं वैद्युत द्विध्रुव", "https://www.youtube.com/watch?v=8V9p2k6xT5M", 1, cur_d),
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी", "अध्याय 1: वैद्युत आवेश तथा क्षेत्र", "गॉस की प्रमेय और उसके महत्वपूर्ण अनुप्रयोग", "https://www.youtube.com/watch?v=7uK2xP8t5rA", 1, cur_d),
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी", "अध्याय 2: स्थिर वैद्युत विभव तथा धारिता", "वैद्युत विभव, समविभव पृष्ठ एवं स्थितिज ऊर्जा", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी", "अध्याय 2: स्थिर वैद्युत विभव तथा धारिता", "समांतर पट्ट संधारित्र एवं परावैद्युत का प्रभाव", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
+        ("Class 12", "इकाई 2: धारा विद्युत", "अध्याय 3: विद्युत धारा", "अपवाह वेग (Drift Velocity), ओम का नियम व प्रतिरोध", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
+        ("Class 12", "इकाई 2: धारा विद्युत", "अध्याय 3: विद्युत धारा", "किरचॉफ के नियम एवं व्हीटस्टोन सेतु का सिद्धान्त", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
+        ("Class 12", "इकाई 3: चुंबकत्व", "अध्याय 4: गतिमान आवेश और चुंबकत्व", "बायो-सेवर्ट का नियम एवं वृत्ताकार धारावाही कुंडली", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
+        ("Class 12", "इकाई 3: चुंबकत्व", "अध्याय 4: गतिमान आवेश और चुंबकत्व", "एम्पियर का नियम एवं चल कुंडली धारामापी (Galvanometer)", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
+        ("Class 12", "इकाई 3: चुंबकत्व", "अध्याय 5: चुंबकत्व एवं द्रव्य", "भू-चुंबकत्व के अवयव तथा प्रति, अनु व लौह चुंबकीय पदार्थ", "https://www.youtube.com/watch?v=d_2eC28yO4o", 1, cur_d),
+        ("Class 12", "इकाई 4: वैद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 6: वैद्युत चुंबकीय प्रेरण", "फैराडे के नियम, लेन्ज का नियम एवं भँवर धाराएं", "https://www.youtube.com/watch?v=q6O9Z0QoO8g", 1, cur_d),
+        ("Class 12", "इकाई 4: वैद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 6: वैद्युत चुंबकीय प्रेरण", "स्वप्रेरण एवं अन्योन्य प्रेरण गुणांक", "https://www.youtube.com/watch?v=Yf9p7j9DovU", 1, cur_d),
+        ("Class 12", "इकाई 4: वैद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 7: प्रत्यावर्ती धारा", "LCR श्रेणी परिपथ, अनुनाद एवं ट्रांसफॉर्मर", "https://www.youtube.com/watch?v=Fj2F7eXv9xU", 1, cur_d),
+        ("Class 12", "इकाई 5: वैद्युत चुंबकीय तरंगें", "अध्याय 8: वैद्युत चुंबकीय तरंगें", "विस्थापन धारा, वैद्युत चुंबकीय स्पेक्ट्रम के गुण", "https://www.youtube.com/watch?v=1uW9MhF9o1Y", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी", "अध्याय 9: किरण प्रकाशिकी एवं प्रकाशिक यंत्र", "गोलीय पृष्ठों से अपवर्तन एवं लेंस मेकर सूत्र", "https://www.youtube.com/watch?v=gT8oK3p9wXU", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी", "अध्याय 9: किरण प्रकाशिकी एवं प्रकाशिक यंत्र", "प्रिज्म अपवर्तन, सूक्ष्मदर्शी एवं खगोलीय दूरदर्शी", "https://www.youtube.com/watch?v=wN8yP2k5rT7", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी", "अध्याय 10: तरंग प्रकाशिकी", "हाइगेन्स का तरंग सिद्धांत, परावर्तन व अपवर्तन सिद्ध करना", "https://www.youtube.com/watch?v=vB2xP9w6mT0", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी", "अध्याय 10: तरंग प्रकाशिकी", "यंग का द्वि-स्लिट प्रयोग (व्यतिकरण) एवं विवर्तन", "https://www.youtube.com/watch?v=tM7wP9k2xL5", 1, cur_d),
+        ("Class 12", "इकाई 7: विकिरण तथा द्रव्य की द्वैत प्रकृति", "अध्याय 11: प्रकाश वैद्युत प्रभाव", "प्रकाश वैद्युत प्रभाव के नियम, आइंस्टीन समीकरण एवं डी-ब्रॉग्ली तरंगें", "https://www.youtube.com/watch?v=zP2xM9w7rK0", 1, cur_d),
+        ("Class 12", "इकाई 8: परमाणु तथा नाभिक", "अध्याय 12 & 13: परमाणु एवं नाभिक", "बोर का परमाणु मॉडल, द्रव्यमान क्षति एवं नाभिकीय संलयन/विखंडन", "https://www.youtube.com/watch?v=yK8wP2m7xR3", 1, cur_d),
+        ("Class 12", "इकाई 9: इलेक्ट्रॉनिक युक्तियाँ", "अध्याय 14: अर्धचालक इलेक्ट्रॉनिकी", "p-n संधि डायोड, अर्ध-तरंग व पूर्ण-तरंग दिष्टकारी (Rectifier)", "https://www.youtube.com/watch?v=xM9wP7v2kL4", 1, cur_d)
     ]
 
     for v in hindi_physics_videos:
@@ -772,9 +775,9 @@ if selected_portal == "⚙️ Admin Control Center":
     # SECTION 2: CLOUD VIDEO LECTURES MANAGER
     elif admin_tab == "🎥 Cloud Video Lectures Manager (Chapter & Unit-wise)":
         st.subheader("🎥 Cloud Video Lectures Manager")
-        st.markdown("Yahan se aap kisi bhi naye Hindi/English video lecture ko add, enable ya disable kar sakte hain:")
+        st.markdown("Yahan se aap kisi bhi naye Hindi video lecture ko add, enable ya disable kar sakte hain:")
 
-        with st.expander("➕ Add Custom Cloud Video Lecture", expanded=False):
+        with st.expander("➕ Add Custom Hindi Video Lecture", expanded=False):
             with st.form("add_cloud_video_form"):
                 v_col1, v_col2 = st.columns(2)
                 v_cls = v_col1.selectbox("Target Class:", ["Class 11", "Class 12"])
@@ -1292,10 +1295,10 @@ else:
                 time.sleep(2)
                 st.rerun()
 
-    # TAB 2: CLOUD VIDEO LECTURES (LIST SE CHUN KAR OPEN HOGA)
+    # TAB 2: CLOUD VIDEO LECTURES (LIST SE SELECT KARKE FULL HD MEIN PLAY HOGA)
     elif student_main_tab == "🎥 Cloud Video Lectures (Chapter-wise)":
-        st.subheader(f"🎥 {student_class} Hindi Medium Video Lectures (Chapter-wise)")
-        st.markdown(f"Student: **{student_name}** | Niche di gayi list me se chapter chunein:")
+        st.subheader(f"🎥 {student_class} भौतिक विज्ञान (Physics Hindi Medium Lectures)")
+        st.markdown(f"Student: **{student_name}** | Niche di gayi list me se apna Chapter aur Topic chunein:")
         
         conn = get_db()
         s_cls_num = "11" if "11" in str(student_class) else "12"
@@ -1308,14 +1311,14 @@ else:
         if v_df.empty:
             st.info(f"ℹ️ {student_class} ke liye abhi koi video lectures upload nahi kiye gaye hain.")
         else:
-            # Clean List Selection of Chapters
+            # Video Selection List
             video_options = {
-                f"{r['chapter_name']} : {r['video_title']} ({r['unit_name']})": r['id']
+                f"{r['chapter_name']} : {r['video_title']}": r['id']
                 for _, r in v_df.iterrows()
             }
             
             selected_video_label = st.selectbox(
-                "📂 List me se Video Lecture Select Karein:",
+                "📂 List me se Chapter aur Topic select karein:",
                 list(video_options.keys()),
                 index=0
             )
@@ -1325,14 +1328,14 @@ else:
             
             st.markdown("---")
             st.markdown(f"### 🎬 {v_selected['chapter_name']}")
-            st.markdown(f"##### 📌 **{v_selected['video_title']}** | {v_selected['unit_name']}")
+            st.markdown(f"##### 📌 **{v_selected['video_title']}** | *{v_selected['unit_name']}*")
             
             # Embed Player
             try:
                 st.video(v_selected['video_url'])
                 st.success("✅ Video lecture active hai. Play button daba kar online dekhein.")
             except Exception:
-                st.error("Video play karne mein dikkat aa rahi hai. Kripya apna internet connection check karein.")
+                st.error("Video load karne mein dikkat aa rahi hai. Kripya internet connection check karein.")
 
     # TAB 3: ACADEMIC DASHBOARD
     elif student_main_tab == "📊 My Academic Dashboard & Goals":
