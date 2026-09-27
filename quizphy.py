@@ -302,22 +302,7 @@ def init_db():
         )
     ''')
 
-    # Initial seeding only if no quizzes exist (never overrides user's toggle choices)
-    c.execute("SELECT COUNT(*) FROM quizzes")
-    if c.fetchone()[0] == 0:
-        now_time = get_ist_now() - timedelta(hours=2)
-        default_start = now_time.strftime("%Y-%m-%d %H:%M")
-        default_end = (now_time + timedelta(days=60)).strftime("%Y-%m-%d %H:%M")
-        c.execute('''
-            INSERT INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-            VALUES ('Class 11', 'Laws of Motion & Work Energy', 'Class 11 - Physics Exam', 15, ?, ?, 1)
-        ''', (default_start, default_end))
-        c.execute('''
-            INSERT INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-            VALUES ('Class 12', 'Electrostatics & Magnetism', 'Class 12 - Physics Exam', 20, ?, ?, 1)
-        ''', (default_start, default_end))
-
-    # Load students.xlsx (Class 11 & Class 12 automatic mapping)
+    # Load students.xlsx (Automatic sync if file exists in folder)
     for s_file in ["students.xlsx", "students.csv"]:
         if os.path.exists(s_file):
             try:
@@ -682,12 +667,10 @@ if selected_portal == "⚙️ Admin Control Center":
                     
                     col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
                     
-                    # TOGGLE BUTTON: Activates or Disables this specific quiz
                     toggle_btn_label = "🔴 Disable Quiz" if r['is_active'] == 1 else "🟢 Make Active (LIVE)"
                     if col_b1.button(toggle_btn_label, key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
-                        # If turning ON, disable other quizzes of the SAME class so only 1 is live
                         if new_status == 1:
                             conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
                         conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
@@ -695,7 +678,6 @@ if selected_portal == "⚙️ Admin Control Center":
                         conn.close()
                         st.rerun()
                     
-                    # START NOW BUTTON: Instantly sets live window and activates
                     if col_b2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
                         now_start = (get_ist_now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
                         now_end = (get_ist_now() + timedelta(days=60)).strftime("%Y-%m-%d %H:%M")
@@ -711,6 +693,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     if col_b3.button(f"🗑️ Delete Quiz", key=f"del_quiz_{r['id']}", type="secondary"):
                         conn = get_db()
                         conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
+                        conn.execute("DELETE FROM questions WHERE quiz_id = ?", (r['id'],))
                         conn.commit()
                         conn.close()
                         st.warning("Quiz deleted.")
@@ -1071,13 +1054,12 @@ else:
             else:
                 st.info(f"ℹ️ {student_class} ke liye profile information abhi upload nahi huyi hai.")
 
-    # TAB 2: LIVE EXAMINATION (ONLY SHOWS QUIZZES WHERE is_active == 1)
+    # TAB 2: LIVE EXAMINATION (INTELLIGENT QUIZ SELECTION)
     elif student_main_tab == "📝 Physics Live Examination":
         quizzes_df = get_all_quizzes()
-        
         s_cls_num = "11" if "11" in str(student_class) else "12"
 
-        # STRICT FILTER: Sirf wahi quiz dikhega jo ACTIVE (is_active == 1) hai
+        # 1. Jo quiz ACTIVE ho aur uski class student ki class se match ho
         class_active_quizzes = quizzes_df[
             (quizzes_df['is_active'] == 1) & 
             (quizzes_df['target_class'].astype(str).str.contains(s_cls_num, case=False, na=False))
@@ -1085,22 +1067,38 @@ else:
 
         if class_active_quizzes.empty:
             st.warning(f"🛑 {student_class} ke liye abhi koi Physics Quiz Live nahi hai.")
-            st.info("💡 **Notice:** Test shuru hone par yahan live paper automatically open ho jayega.")
+            st.info("💡 **Notice:** Teacher dwara test live karne par yahan paper open ho jayega.")
             st.stop()
 
-        if len(class_active_quizzes) == 1:
-            quiz_id = class_active_quizzes.iloc[0]['id']
-            quiz_title_val = class_active_quizzes.iloc[0]['quiz_title']
-            quiz_topic_val = class_active_quizzes.iloc[0]['topic']
-            quiz_dur_val = int(class_active_quizzes.iloc[0]['duration_minutes'])
+        # 2. Check which active quiz actually has questions
+        valid_quizzes = []
+        conn = get_db()
+        for _, r in class_active_quizzes.iterrows():
+            q_cnt = conn.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (r['id'],)).fetchone()[0]
+            if q_cnt > 0:
+                valid_quizzes.append((r, q_cnt))
+        conn.close()
+
+        # If valid quizzes with questions exist, prioritize them!
+        if valid_quizzes:
+            if len(valid_quizzes) == 1:
+                selected_quiz_row = valid_quizzes[0][0]
+            else:
+                q_opts = {f"{r['quiz_title']} (Topic: {r['topic']})": r['id'] for r, _ in valid_quizzes}
+                sel_label = st.selectbox(f"Select {student_class} Live Exam:", list(q_opts.keys()))
+                sel_id = q_opts[sel_label]
+                selected_quiz_row = next(r for r, _ in valid_quizzes if r['id'] == sel_id)
         else:
-            q_options = {f"{r['quiz_title']} ({r['topic']})": r['id'] for _, r in class_active_quizzes.iterrows()}
-            sel_label = st.selectbox(f"Select {student_class} Live Exam:", list(q_options.keys()))
-            quiz_id = q_options[sel_label]
-            quiz_row = class_active_quizzes[class_active_quizzes['id'] == quiz_id].iloc[0]
-            quiz_title_val = quiz_row['quiz_title']
-            quiz_topic_val = quiz_row['topic']
-            quiz_dur_val = int(quiz_row['duration_minutes'])
+            # Fallback if no questions added yet in any quiz
+            selected_quiz_row = class_active_quizzes.iloc[-1]
+
+        quiz_id = int(selected_quiz_row['id'])
+        quiz_title_val = selected_quiz_row['quiz_title']
+        quiz_topic_val = selected_quiz_row['topic']
+        quiz_dur_val = int(selected_quiz_row['duration_minutes'])
+
+        st.markdown(f"### 📝 {quiz_title_val}")
+        st.markdown(f"##### 📖 Topic: **{quiz_topic_val}** | Class: **{student_class}**")
 
         conn = get_db()
         sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
@@ -1148,8 +1146,6 @@ else:
         conn.close()
 
         if not attempt_row:
-            st.markdown(f"### 📌 {quiz_title_val}")
-            st.markdown(f"##### Target: **{student_class}** | Topic: **{quiz_topic_val}**")
             st.markdown(f"""
             - **Candidate SR No:** `{student_sr}`
             - **Exam Duration:** `{quiz_dur_val} Minutes`
