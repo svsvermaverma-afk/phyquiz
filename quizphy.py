@@ -15,16 +15,24 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # ==========================================
-# 1. PAGE CONFIGURATION & RESPONSIVE CSS
+# 1. PAGE CONFIGURATION, SEO & RESPONSIVE CSS
 # ==========================================
 st.set_page_config(
-    page_title="ABIC Renukoot - Physics Quiz & Student Portal",
+    page_title="Shashank Phy Quiz - ABIC Renukoot | Shashank Verma Physics Portal",
     page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
+# Google Indexing & Search Optimization
 st.markdown("""
+<head>
+    <meta name="description" content="Official Physics Quiz and Academic Portal by Shashank Verma, TGT Physics at ABIC Renukoot. Class 11 and Class 12 Physics tests, student attendance, and results.">
+    <meta name="keywords" content="shashank phy quiz, shashank physics quiz, shashank verma physics, abic renukoot physics, physics quiz shashank sir, abic quiz portal">
+    <meta name="author" content="Shashank Verma">
+    <meta name="robots" content="index, follow">
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large">
+</head>
 <style>
     .school-header {
         text-align: center;
@@ -75,13 +83,12 @@ st.markdown("""
 
 st.markdown("""
 <div class="school-header">
-    <h1>ABITYA BIRLA INTERMEDIATE COLLEGE, RENUKOOT</h1>
+    <h1>ABIC RENUKOOT</h1>
     <h3>⚡ Physics Subject & Academic Portal ⚡</h3>
     <p>Mentor: <b>Shashank Verma, TGT (Physics)</b></p>
 </div>
 """, unsafe_allow_html=True)
 
-# Purana Database Name (Data poori tarah surakshit rahega)
 DB_FILE = "master_quiz_system_prod_v17.db"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@2026"
@@ -112,6 +119,14 @@ def clean_sr_no(sr_val):
     if sr_str.endswith(".0"):
         sr_str = sr_str[:-2]
     return sr_str
+
+def format_class_name(c_val):
+    c_str = str(c_val).strip().lower()
+    if "11" in c_str:
+        return "Class 11"
+    elif "12" in c_str:
+        return "Class 12"
+    return "Class 11"
 
 # Smart Answer Matcher Engine
 def is_answer_correct(selected, correct, opt_a, opt_b, opt_c, opt_d):
@@ -151,26 +166,18 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # Master Students
     c.execute('''
         CREATE TABLE IF NOT EXISTS master_students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             student_name TEXT NOT NULL,
             sr_no TEXT NOT NULL,
-            normalized_name TEXT UNIQUE NOT NULL
+            normalized_name TEXT NOT NULL,
+            roll_no INTEGER,
+            target_class TEXT NOT NULL,
+            UNIQUE(target_class, normalized_name)
         )
     ''')
     
-    try:
-        c.execute("ALTER TABLE master_students ADD COLUMN roll_no INTEGER")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE master_students ADD COLUMN target_class TEXT DEFAULT 'Class 12'")
-    except sqlite3.OperationalError:
-        pass
-
-    # Quizzes
     c.execute('''
         CREATE TABLE IF NOT EXISTS quizzes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,7 +191,6 @@ def init_db():
         )
     ''')
 
-    # Questions
     c.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -198,7 +204,6 @@ def init_db():
         )
     ''')
     
-    # Submissions
     c.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,7 +219,6 @@ def init_db():
         )
     ''')
     
-    # Student Responses
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_responses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -230,7 +234,6 @@ def init_db():
         )
     ''')
 
-    # Quiz Attempts
     c.execute('''
         CREATE TABLE IF NOT EXISTS quiz_attempts (
             quiz_id INTEGER NOT NULL,
@@ -240,7 +243,6 @@ def init_db():
         )
     ''')
 
-    # Student Academic Records (Class 11 & Class 12 dono ke liye)
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_profiles (
             sr_no TEXT PRIMARY KEY,
@@ -300,7 +302,29 @@ def init_db():
         )
     ''')
 
-    # Auto sync agar file server par available ho
+    # SYNC STUDENTS.XLSX (Class 11 & Class 12 automatically mapped)
+    for s_file in ["students.xlsx", "students.csv"]:
+        if os.path.exists(s_file):
+            try:
+                s_df = pd.read_csv(s_file) if s_file.endswith(".csv") else pd.read_excel(s_file)
+                s_df.columns = [str(col).strip().lower().replace(" ", "_") for col in s_df.columns]
+                cls_col = next((c for c in s_df.columns if "class" in c), None)
+                nm_col = next((c for c in s_df.columns if "name" in c), s_df.columns[1] if len(s_df.columns) > 1 else s_df.columns[0])
+                sr_col = next((c for c in s_df.columns if any(k in c for k in ["sr", "roll", "id", "password"])), s_df.columns[-1])
+                
+                for _, r in s_df.iterrows():
+                    st_name = clean_text(r[nm_col])
+                    st_sr = clean_sr_no(r[sr_col])
+                    st_class = format_class_name(r[cls_col]) if cls_col else "Class 11"
+                    if st_name and st_sr:
+                        c.execute('''
+                            INSERT OR REPLACE INTO master_students (student_name, sr_no, normalized_name, target_class)
+                            VALUES (?, ?, ?, ?)
+                        ''', (st_name, st_sr, st_name.lower(), st_class))
+            except Exception:
+                pass
+
+    # SYNC XII B INFORMATION.XLSX
     if os.path.exists("XII B INFORMATION.xlsx"):
         try:
             df_info = pd.read_excel("XII B INFORMATION.xlsx", sheet_name="Sheet1 (5)")
@@ -310,9 +334,8 @@ def init_db():
                 r_no = clean_num(r.get('ROLL NO.'))
                 if s_sr and s_nm:
                     c.execute('''
-                        INSERT INTO master_students (student_name, sr_no, normalized_name, roll_no, target_class)
+                        INSERT OR REPLACE INTO master_students (student_name, sr_no, normalized_name, roll_no, target_class)
                         VALUES (?, ?, ?, ?, 'Class 12')
-                        ON CONFLICT(normalized_name) DO UPDATE SET student_name=excluded.student_name, sr_no=excluded.sr_no, roll_no=excluded.roll_no, target_class='Class 12'
                     ''', (s_nm, s_sr, s_nm.lower(), r_no))
 
                     c.execute('''
@@ -459,48 +482,51 @@ def generate_merit_pdf(subs_df, quiz_info):
     buffer.close()
     return pdf_val
 
+# Anti-Cheating & Live Timer Component
 def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
     timer_js = f"""
     <style>
         #sticky-timer-box {{
             position: fixed; 
-            top: 50px; 
-            right: 20px; 
-            background: #ff4b4b; 
+            top: 45px; 
+            right: 15px; 
+            background: #d32f2f; 
             color: #ffffff; 
-            padding: 10px 18px; 
+            padding: 8px 16px; 
             border-radius: 8px; 
             font-family: monospace; 
-            font-size: 18px; 
+            font-size: 16px; 
             font-weight: bold; 
-            z-index: 999999;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-            border: 2px solid white;
+            z-index: 9999999;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border: 2px solid #ffffff;
         }}
         @media only screen and (max-width: 600px) {{
             #sticky-timer-box {{
-                top: 40px;
+                top: 35px;
                 right: 8px;
-                padding: 6px 12px;
-                font-size: 14px;
+                padding: 6px 10px;
+                font-size: 13px;
             }}
         }}
     </style>
     <div id="sticky-timer-box">
-        ⏳ <span id="timer-display">Loading...</span> | ⚠️ <span id="switch-count">0</span>
+        ⏳ <span id="timer-display">Loading...</span> | ⚠️ Cheating: <span id="switch-count">0</span>/3
     </div>
 
     <script>
     let timeLeft = {int(remaining_seconds)};
     let display = document.getElementById('timer-display');
     let switchCountElem = document.getElementById('switch-count');
-    let tabSwitches = sessionStorage.getItem('tab_switches_{quiz_id}_{student_name}') || 0;
+    let tabSwitches = parseInt(sessionStorage.getItem('tab_switches_{quiz_id}_{student_name}') || '0');
     switchCountElem.innerHTML = tabSwitches;
 
     function triggerAutoSubmit() {{
         let buttons = window.parent.document.querySelectorAll('button');
         buttons.forEach(btn => {{
-            if (btn.innerText.includes("Submit Final Answers")) {{ btn.click(); }}
+            if (btn.innerText.includes("Submit Final Answers")) {{
+                btn.click();
+            }}
         }});
     }}
 
@@ -515,28 +541,30 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
         display.innerHTML = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
         timeLeft--;
     }}
-
     updateTimer();
     setInterval(updateTimer, 1000);
 
-    window.addEventListener('blur', function() {{
+    function recordViolation() {{
         tabSwitches++;
         sessionStorage.setItem('tab_switches_{quiz_id}_{student_name}', tabSwitches);
         switchCountElem.innerHTML = tabSwitches;
-        alert('⚠️ WARNING (' + tabSwitches + '/3): Tab switch detected! Repeated tab switching will result in automatic submission.');
+        
         if (tabSwitches >= 3) {{
-            alert('❌ Maximum limit reached. The test is now being submitted automatically.');
+            alert('❌ MAXIMUM WARNINGS EXCEEDED!\\nAapne 3 baar tab switch kiya hai. Exam turant submit ho raha hai.');
             triggerAutoSubmit();
+        }} else {{
+            alert('⚠️ CHEATING WARNING (' + tabSwitches + '/3)!\\nTab switch ya doosra app kholna sakht mana hai.');
         }}
-    }});
+    }}
 
-    document.addEventListener('contextmenu', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('copy', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('cut', function(e) {{ e.preventDefault(); }});
-    document.addEventListener('paste', function(e) {{ e.preventDefault(); }});
+    window.addEventListener('blur', recordViolation);
+    window.parent.document.addEventListener('contextmenu', function(e) {{ e.preventDefault(); }});
+    window.parent.document.addEventListener('copy', function(e) {{ e.preventDefault(); }});
+    window.parent.document.addEventListener('cut', function(e) {{ e.preventDefault(); }});
+    window.parent.document.addEventListener('paste', function(e) {{ e.preventDefault(); }});
     </script>
     """
-    components.html(timer_js, height=65)
+    components.html(timer_js, height=55)
 
 # ==========================================
 # 3. SIDEBAR NAVIGATION
@@ -587,14 +615,15 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # SECTION 0: ACADEMIC DATA UPLOAD SECTION (CLASS 11 & 12 SELECTION)
+    # SECTION 0: ACADEMIC DATA UPLOADS
     if admin_tab == "📂 Academic Data Uploads (Class 11 / Class 12)":
-        st.subheader("📂 Academic Records Upload Center (Class 11 / 12)")
+        st.subheader("📂 Academic Records & Student Excel Upload Center")
         
-        target_upload_class = st.selectbox("Kaunsi Class ke liye upload karna hai?", ["Class 12", "Class 11"])
+        target_upload_class = st.selectbox("Kaunsi Class ke liye upload karna hai?", ["Class 11", "Class 12"])
 
         up_choice = st.radio("Select File Type to Upload:", [
-            "Complete Student Info (Roll No, SR No, Name etc.)",
+            "Students Master List (students.xlsx - Class, Name, SR No)",
+            "Complete Student Info (Roll No, SR No, Details)",
             "Attendance Sheet", 
             "Monthly Test Marks",
             "Student Career Goals (Short & Long Term)"
@@ -606,7 +635,28 @@ if selected_portal == "⚙️ Admin Control Center":
             conn = get_db()
             cur = conn.cursor()
             try:
-                if up_choice == "Complete Student Info (Roll No, SR No, Name etc.)":
+                if up_choice == "Students Master List (students.xlsx - Class, Name, SR No)":
+                    df = pd.read_csv(up_file) if up_file.name.endswith(".csv") else pd.read_excel(up_file)
+                    df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
+                    cls_col = next((c for c in df.columns if "class" in c), None)
+                    nm_col = next((c for c in df.columns if "name" in c), df.columns[1] if len(df.columns) > 1 else df.columns[0])
+                    sr_col = next((c for c in df.columns if any(k in c for k in ["sr", "roll", "id", "password"])), df.columns[-1])
+                    
+                    cnt = 0
+                    for _, r in df.iterrows():
+                        st_name = clean_text(r[nm_col])
+                        st_sr = clean_sr_no(r[sr_col])
+                        st_class = format_class_name(r[cls_col]) if cls_col else target_upload_class
+                        if st_name and st_sr:
+                            cur.execute('''
+                                INSERT OR REPLACE INTO master_students (student_name, sr_no, normalized_name, target_class)
+                                VALUES (?, ?, ?, ?)
+                            ''', (st_name, st_sr, st_name.lower(), st_class))
+                            cnt += 1
+                    conn.commit()
+                    st.success(f"✅ {cnt} Students successfully imported/updated in master database!")
+
+                elif up_choice == "Complete Student Info (Roll No, SR No, Details)":
                     xl = pd.ExcelFile(up_file)
                     sheet_name = 'Sheet1 (5)' if 'Sheet1 (5)' in xl.sheet_names else xl.sheet_names[0]
                     df = pd.read_excel(up_file, sheet_name=sheet_name)
@@ -619,9 +669,8 @@ if selected_portal == "⚙️ Admin Control Center":
                         r_no = clean_num(r.get('ROLL NO.'))
                         if s_sr and s_nm:
                             cur.execute('''
-                                INSERT INTO master_students (student_name, sr_no, normalized_name, roll_no, target_class)
+                                INSERT OR REPLACE INTO master_students (student_name, sr_no, normalized_name, roll_no, target_class)
                                 VALUES (?, ?, ?, ?, ?)
-                                ON CONFLICT(normalized_name) DO UPDATE SET student_name=excluded.student_name, sr_no=excluded.sr_no, roll_no=excluded.roll_no, target_class=excluded.target_class
                             ''', (s_nm, s_sr, s_nm.lower(), r_no, target_upload_class))
                             cur.execute('''
                                 INSERT OR REPLACE INTO student_profiles (sr_no, roll_no, class_sec, pen_number, dob, student_name, student_name_hindi, father_name, father_name_hindi, mother_name, category, mobile_no, email_id)
@@ -629,7 +678,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             ''', (s_sr, r_no, target_upload_class, clean_text(r.get('PEN NUMBER')), str(r.get('D.O.B.', ''))[:10], s_nm, clean_text(r.get('STUDENT NAME IN HINDI')), clean_text(r.get("FATHER'S NAME")), clean_text(r.get("FATHER'S NAME IN HINDI")), clean_text(r.get("MOTHER'S NAME")), clean_text(r.get('CAT.')), clean_text(r.get('MOB. NO.')), clean_text(r.get('EMAIL ID'))))
                             cnt += 1
                     conn.commit()
-                    st.success(f"✅ {cnt} Students Profiles for {target_upload_class} registered successfully!")
+                    st.success(f"✅ {cnt} Students Profiles registered for {target_upload_class}!")
 
                 elif up_choice == "Attendance Sheet":
                     cur.execute("SELECT roll_no, sr_no FROM student_profiles WHERE roll_no IS NOT NULL")
@@ -647,7 +696,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             ''', (s_sr, r_no, target_upload_class, clean_text(r.get('STUDENT NAME')), clean_num(r.iloc[2]), clean_num(r.get('MAY')), clean_num(r.get('july')), clean_num(r.get('AUG')), clean_num(r.get('TOAL FROM APR.2')), float(r.get('PER OUT OF 87 WORKING DAY', 0) or 0)))
                             cnt += 1
                     conn.commit()
-                    st.success(f"✅ {cnt} Attendance records for {target_upload_class} updated successfully!")
+                    st.success(f"✅ {cnt} Attendance records updated for {target_upload_class}!")
 
                 elif up_choice == "Monthly Test Marks":
                     cur.execute("SELECT roll_no, sr_no FROM student_profiles WHERE roll_no IS NOT NULL")
@@ -667,7 +716,7 @@ if selected_portal == "⚙️ Admin Control Center":
                             ''', (s_sr, r_no, target_upload_class, clean_text(r.get('STUDENT NAME')), clean_num(r.get('HINDI OUTOF 20')), clean_num(r.get('ENG OUTOF 20')), clean_num(r.get('MATHS OUTOF 20')), clean_num(r.get('PHY OUTOF 20')), clean_num(r.get('CHE OUTOF 20')), clean_num(r.get('TOTAL OUT OF 100'))))
                             cnt += 1
                     conn.commit()
-                    st.success(f"✅ {cnt} Test marks for {target_upload_class} saved successfully!")
+                    st.success(f"✅ {cnt} Test marks saved for {target_upload_class}!")
 
                 elif up_choice == "Student Career Goals (Short & Long Term)":
                     cur.execute("SELECT roll_no, sr_no FROM student_profiles WHERE roll_no IS NOT NULL")
@@ -685,20 +734,20 @@ if selected_portal == "⚙️ Admin Control Center":
                             ''', (s_sr, r_no, target_upload_class, clean_text(r.get("Student's Name / छात्र/छात्रा का नाम")), clean_text(r.get('अल्पकालिक लक्ष्य (Short-Term Goal - सत्र 2026-27)')), clean_text(r.get('दीर्घकालिक लक्ष्य (Long-Term Goal - उच्च शिक्षा एवं करियर)'))))
                             cnt += 1
                     conn.commit()
-                    st.success(f"✅ {cnt} Career Goals for {target_upload_class} updated successfully!")
+                    st.success(f"✅ {cnt} Career Goals saved for {target_upload_class}!")
             except Exception as e:
-                st.error(f"Error reading file: {e}")
+                st.error(f"Error: {e}")
             finally:
                 conn.close()
 
-    # SECTION 1: CREATE & MANAGE QUIZZES
+    # SECTION 1: QUIZZES
     elif admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
-        st.subheader("Existing Quizzes & Controls")
+        st.subheader("Quizzes & Class Controls")
         with st.expander("➕ Create New Quiz", expanded=False):
             with st.form("new_quiz_form"):
                 c_cls1, c_cls2 = st.columns(2)
-                target_class_choice = c_cls1.selectbox("Select Class:", ["Class 11", "Class 12", "Class 9", "Class 10", "Other"])
-                topic_name = c_cls2.text_input("Topic / Chapter Name:", value="Units & Measurement")
+                target_class_choice = c_cls1.selectbox("Select Target Class:", ["Class 11", "Class 12", "Class 9", "Class 10"])
+                topic_name = c_cls2.text_input("Topic Name:", value="Motion in a Straight Line")
                 q_title = st.text_input("Quiz Title:", value=f"{target_class_choice} - {topic_name}")
                 q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
                 c_d1, c_d2 = st.columns(2)
@@ -735,12 +784,13 @@ if selected_portal == "⚙️ Admin Control Center":
                 with st.container():
                     st.markdown(f"### 📝 **{r['quiz_title']}**")
                     cls_val = r['target_class'] if 'target_class' in r and pd.notna(r['target_class']) else 'Class 11'
-                    top_val = r['topic'] if 'topic' in r and pd.notna(r['topic']) else 'General Physics'
-                    st.markdown(f"🏷️ **Class:** `{cls_val}` | 📖 **Topic:** `{top_val}`")
+                    top_val = r['topic'] if 'topic' in r and pd.notna(r['topic']) else 'General'
+                    st.markdown(f"🏷️ **Target Class:** `{cls_val}` | 📖 **Topic:** `{top_val}`")
                     st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active (LIVE)' if r['is_active'] == 1 else 'Disabled'}`")
                     
                     col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
                     
+                    # Toggle Active: Sirf usi Class ke doosre tests ko band karega
                     if col_b1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
                         new_status = 0 if r['is_active'] == 1 else 1
                         conn = get_db()
@@ -751,7 +801,8 @@ if selected_portal == "⚙️ Admin Control Center":
                         conn.close()
                         st.rerun()
                     
-                    if col_b2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
+                    # Start NOW: Sirf usi class ke liye LIVE
+                    if col_b2.button(f"⚡ Start NOW (Live)", key=f"now_{r['id']}"):
                         now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
                         now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
                         conn = get_db()
@@ -759,7 +810,7 @@ if selected_portal == "⚙️ Admin Control Center":
                         conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
                         conn.commit()
                         conn.close()
-                        st.success(f"{cls_val} ke liye sirf yeh Quiz LIVE kar diya gaya hai!")
+                        st.success(f"{cls_val} ke liye yeh Quiz LIVE kar diya gaya hai!")
                         time.sleep(1)
                         st.rerun()
                     
@@ -773,16 +824,18 @@ if selected_portal == "⚙️ Admin Control Center":
                         st.rerun()
                     st.divider()
 
-    # SECTION 2: MASTER STUDENTS DIRECTORY
+    # SECTION 2: DIRECTORY
     elif admin_tab == "👥 Master Student Directory (Excel/Manual)":
-        st.subheader("👥 Master Student Directory")
+        st.subheader("👥 Registered Students Directory")
         conn = get_db()
-        master_df = pd.read_sql_query("SELECT target_class AS 'Class', roll_no AS 'Roll No', student_name AS 'Student Name', sr_no AS 'SR No (Password)' FROM master_students ORDER BY target_class DESC, roll_no ASC, student_name ASC", conn)
+        master_df = pd.read_sql_query("SELECT target_class AS 'Class', student_name AS 'Student Name', sr_no AS 'SR No (Password)', roll_no AS 'Roll No' FROM master_students ORDER BY target_class ASC, student_name ASC", conn)
         conn.close()
         if master_df.empty:
             st.info("No registered students found.")
         else:
-            st.write(f"Total Enrolled: **{len(master_df)} Students**")
+            c11_cnt = len(master_df[master_df['Class'] == 'Class 11'])
+            c12_cnt = len(master_df[master_df['Class'] == 'Class 12'])
+            st.write(f"Total Enrolled: **{len(master_df)} Students** (Class 11: **{c11_cnt}**, Class 12: **{c12_cnt}**)")
             st.dataframe(master_df, use_container_width=True)
 
     # SECTION 3: QUESTION BANK
@@ -830,7 +883,7 @@ if selected_portal == "⚙️ Admin Control Center":
 
     # SECTION 4: STUDENT RESULTS
     elif admin_tab == "📊 Student Results & Controls":
-        st.subheader("Student Submissions & Performance Sheet")
+        st.subheader("Student Submissions & Merit Sheet")
         if quizzes_df.empty:
             st.info("No quizzes found.")
         else:
@@ -865,72 +918,71 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.download_button("📥 Download Results (CSV)", data=csv_data, file_name=f"results_{sel_q_id}.csv", mime="text/csv")
 
 # ==========================================
-# 5. STUDENT PORTAL (NAME + SR NUMBER LOGIN)
+# 5. STUDENT PORTAL (CLASS-LOCKED LOGIN)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
         st.session_state.student_name = None
     if "student_sr" not in st.session_state:
         st.session_state.student_sr = None
-    if "selected_quiz_id" not in st.session_state:
-        st.session_state.selected_quiz_id = None
+    if "student_class" not in st.session_state:
+        st.session_state.student_class = None
 
-    quizzes_df = get_all_quizzes()
-    active_quizzes = quizzes_df[quizzes_df['is_active'] == 1] if not quizzes_df.empty else pd.DataFrame()
-
-    # Student Login Form (Name & SR No)
-    if not st.session_state.student_name or not st.session_state.student_sr:
-        st.subheader("🎓 Student Examination & Academic Login Portal")
-        st.markdown("Apna **Registered Full Name** aur **Password (SR Number)** daal kar login karein.")
+    # LOGIN FORM
+    if not st.session_state.student_sr:
+        st.subheader("🎓 Student Examination & Academic Portal")
+        st.markdown("Pehle apni **Class** select karein aur apna **Password (SR Number)** darj karein.")
         
         col1, _ = st.columns([1.2, 1])
         with col1:
             with st.form("student_login_form"):
-                in_name = st.text_input("Student Name (Registered):", placeholder="e.g. ABHIMANYU YADAV")
-                in_pwd = st.text_input("Password (Your SR No):", type="password", placeholder="e.g. 38954")
-                submit_login = st.form_submit_button("Sign In to Student Portal", type="primary")
+                sel_class = st.selectbox("Select Your Class:", ["Class 11", "Class 12"])
+                in_sr = st.text_input("Password (Your SR Number):", type="password", placeholder="e.g. 38900")
+                submit_login = st.form_submit_button("Sign In to Portal", type="primary")
                 
                 if submit_login:
-                    clean_input_name = clean_text(in_name)
-                    clean_input_pwd = clean_sr_no(in_pwd)
-                    norm_input_name = clean_input_name.lower()
+                    clean_input_sr = clean_sr_no(in_sr)
                     
                     conn = get_db()
-                    student_data = conn.execute("SELECT * FROM master_students WHERE normalized_name = ?", (norm_input_name,)).fetchone()
+                    student_data = conn.execute(
+                        "SELECT * FROM master_students WHERE sr_no = ? AND target_class = ?", 
+                        (clean_input_sr, sel_class)
+                    ).fetchone()
                     conn.close()
                     
-                    if not clean_input_name or not clean_input_pwd:
-                        st.error("Please enter both Name and Password (SR No).")
+                    if not clean_input_sr:
+                        st.error("Kripya apna SR Number (Password) darj karein.")
                     elif not student_data:
-                        st.error(f"❌ Student Name '{clean_input_name}' is not registered! Please check spelling.")
-                    elif clean_sr_no(student_data['sr_no']) != clean_input_pwd:
-                        st.error("❌ Incorrect Password! (Your password is your SR Number).")
+                        st.error(f"❌ {sel_class} mein SR Number '{clean_input_sr}' registered nahi mila! Kripya apna sahi class aur SR number check karein.")
                     else:
                         st.session_state.student_name = student_data['student_name']
                         st.session_state.student_sr = clean_sr_no(student_data['sr_no'])
-                        st.success(f"Welcome, {student_data['student_name']}!")
+                        st.session_state.student_class = student_data['target_class']
+                        st.success("Login successful!")
+                        time.sleep(0.5)
                         st.rerun()
         st.stop()
 
     student_name = st.session_state.student_name
     student_sr = st.session_state.student_sr
+    student_class = st.session_state.student_class
 
-    st.sidebar.markdown(f"**👤 Student:** `{student_name}`")
+    st.sidebar.markdown(f"**🏷️ Class:** `{student_class}`")
     st.sidebar.markdown(f"**🔑 SR No:** `{student_sr}`")
     
     if st.sidebar.button("Log Out"):
         st.session_state.student_name = None
         st.session_state.student_sr = None
+        st.session_state.student_class = None
         st.session_state.selected_quiz_id = None
         st.rerun()
 
-    # Navigation Tabs for Student
     student_main_tab = st.radio("Navigation:", ["📝 Physics Live Examination", "📊 My Academic Dashboard & Goals"], horizontal=True)
     st.divider()
 
     # TAB 1: ACADEMIC DASHBOARD
     if student_main_tab == "📊 My Academic Dashboard & Goals":
-        st.title(f"📊 Academic Progress & Profile: {student_name}")
+        st.title(f"📊 Academic Progress & Profile — {student_class}")
         
         conn = get_db()
         prof = conn.execute("SELECT * FROM student_profiles WHERE sr_no = ?", (student_sr,)).fetchone()
@@ -941,7 +993,6 @@ else:
 
         tab_g, tab_m, tab_a, tab_p = st.tabs(["🎯 Goals & Aspirations", "📈 Monthly Test Marks", "📅 Attendance Report", "📋 Registered Profile"])
 
-        # Goals Tab
         with tab_g:
             st.subheader("🎯 Career & Academic Aspirations")
             if goals:
@@ -956,9 +1007,8 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.info("ℹ️ Career goals record not uploaded yet for this class/student. (Class 11 records will be updated soon).")
+                st.info(f"ℹ️ {student_class} ke liye career goals record abhi upload nahi huye hain.")
 
-        # Test Marks Tab
         with tab_m:
             st.subheader("📈 Monthly Test Marks")
             if marks:
@@ -970,9 +1020,8 @@ else:
                 m5.metric("Chemistry (20)", marks['chemistry'])
                 m6.metric("Total Marks", f"{marks['total_marks']} / 100", f"{marks['total_marks']}%")
             else:
-                st.info("ℹ️ Monthly test records not uploaded yet for this class.")
+                st.info(f"ℹ️ {student_class} ke liye monthly test marks abhi upload nahi huye hain.")
 
-        # Attendance Tab
         with tab_a:
             st.subheader("📅 Working Days Attendance Record")
             if att:
@@ -984,9 +1033,8 @@ else:
                 a5.metric("Total Present / %", f"{att['total_present']} Days", f"{att['percentage']:.1f}%")
                 st.progress(min(1.0, max(0.0, float(att['percentage']) / 100.0)))
             else:
-                st.info("ℹ️ Attendance records not uploaded yet for this class.")
+                st.info(f"ℹ️ {student_class} ke liye attendance record abhi upload nahi huye hain.")
 
-        # Profile Tab
         with tab_p:
             st.subheader("📋 Student School Information")
             if prof:
@@ -995,43 +1043,49 @@ else:
                     st.markdown(f"**Roll Number:** `{prof['roll_no']}`")
                     st.markdown(f"**Class & Section:** `{prof['class_sec']}`")
                     st.markdown(f"**Scholar Register (SR) No:** `{prof['sr_no']}`")
-                    st.markdown(f"**Student Name (Hindi):** {prof['student_name_hindi']}")
-                    st.markdown(f"**Father's Name:** {prof['father_name']} ({prof['father_name_hindi']})")
+                    st.markdown(f"**Father's Name:** {prof['father_name']}")
                 with c2:
                     st.markdown(f"**Mother's Name:** {prof['mother_name']}")
                     st.markdown(f"**Date of Birth:** `{prof['dob']}`")
                     st.markdown(f"**Category:** `{prof['category']}`")
                     st.markdown(f"**Registered Mobile:** `{prof['mobile_no']}`")
-                    st.markdown(f"**Registered Email:** `{prof['email_id']}`")
             else:
-                st.info("ℹ️ Profile information not uploaded yet for this class.")
+                st.info(f"ℹ️ {student_class} ke liye profile information abhi upload nahi huyi hai.")
 
-    # TAB 2: LIVE EXAMINATION
+    # TAB 2: LIVE EXAMINATION (STRICT CLASS-WISE FILTER)
     elif student_main_tab == "📝 Physics Live Examination":
-        if active_quizzes.empty:
-            st.warning("🛑 Currently there are no live quizzes available.")
+        quizzes_df = get_all_quizzes()
+        
+        # STRICT FILTER: Sirf log-in kiye gaye student ki class ka active quiz
+        class_active_quizzes = quizzes_df[
+            (quizzes_df['is_active'] == 1) & 
+            (quizzes_df['target_class'].str.strip().str.lower() == student_class.strip().lower())
+        ] if not quizzes_df.empty else pd.DataFrame()
+
+        if class_active_quizzes.empty:
+            st.warning(f"🛑 {student_class} ke liye abhi koi Physics Quiz Live nahi hai. Kripya apne subject teacher se sampark karein.")
             st.stop()
 
-        if len(active_quizzes) == 1:
-            quiz_id = active_quizzes.iloc[0]['id']
+        if len(class_active_quizzes) == 1:
+            quiz_id = class_active_quizzes.iloc[0]['id']
+            quiz_title_val = class_active_quizzes.iloc[0]['quiz_title']
+            quiz_topic_val = class_active_quizzes.iloc[0]['topic']
+            quiz_dur_val = int(class_active_quizzes.iloc[0]['duration_minutes'])
         else:
-            q_options = {f"[{r['target_class']}] {r['quiz_title']} ({r['topic']})": r['id'] for _, r in active_quizzes.iterrows()}
-            sel_label = st.selectbox("Select Active Exam:", list(q_options.keys()))
+            q_options = {f"{r['quiz_title']} ({r['topic']})": r['id'] for _, r in class_active_quizzes.iterrows()}
+            sel_label = st.selectbox(f"Select {student_class} Live Exam:", list(q_options.keys()))
             quiz_id = q_options[sel_label]
+            quiz_row = class_active_quizzes[class_active_quizzes['id'] == quiz_id].iloc[0]
+            quiz_title_val = quiz_row['quiz_title']
+            quiz_topic_val = quiz_row['topic']
+            quiz_dur_val = int(quiz_row['duration_minutes'])
 
         conn = get_db()
-        quiz_row = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
-        quiz_dict = dict(quiz_row) if quiz_row else {}
-        quiz_title_val = quiz_dict.get('quiz_title', 'Exam')
-        quiz_topic_val = quiz_dict.get('topic', 'General')
-        quiz_class_val = quiz_dict.get('target_class', 'Class 12')
-        quiz_dur_val = int(quiz_dict.get('duration_minutes', 15))
-
         sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
         conn.close()
 
         if sub_check:
-            st.success(f"✅ {student_name}, your exam for **'{quiz_title_val}'** has been successfully submitted!")
+            st.success(f"✅ Your exam for **'{quiz_title_val}'** has been successfully submitted!")
             c_m1, c_m2, c_m3 = st.columns(3)
             c_m1.metric("Final Score", f"{sub_check['score']} / {sub_check['total_questions']}")
             pct = (sub_check['score'] / sub_check['total_questions'] * 100) if sub_check['total_questions'] > 0 else 0
@@ -1073,14 +1127,14 @@ else:
 
         if not attempt_row:
             st.markdown(f"### 📌 {quiz_title_val}")
-            st.markdown(f"##### Topic: **{quiz_topic_val}** | Class: **{quiz_class_val}**")
+            st.markdown(f"##### Target: **{student_class}** | Topic: **{quiz_topic_val}**")
             st.markdown(f"""
-            - **Candidate Name:** `{student_name}` (SR: `{student_sr}`)
+            - **Candidate SR No:** `{student_sr}`
             - **Exam Duration:** `{quiz_dur_val} Minutes`
             - **Total Questions:** `{len(questions_df)}`
-            - **Instructions:**
-                1. 'Start Exam Now' click karte hi countdown timer shuru ho jayega.
-                2. Tab switch allow nahi hai. 3 violations par test auto-submit ho jayega.
+            - **Anti-Cheating Rules:**
+                1. 'Start Exam Now' par click karte hi timer chalu ho jayega.
+                2. Screen par Google search ya tab switch karna mana hai. 3 warnings par exam auto-submit ho jayega.
             """)
             if st.button("🚀 Start Exam Now", type="primary"):
                 get_or_set_attempt_start(quiz_id, norm_name)
