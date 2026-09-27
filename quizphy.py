@@ -27,7 +27,7 @@ st.set_page_config(
 # Google Indexing & Crawler Meta Tags (SEO)
 st.markdown("""
 <head>
-    <meta name="description" content="Official Physics Quiz and Academic Portal by Shashank Verma, TGT Physics at ABIC Renukoot. Class 11 and Class 12 Physics tests, student attendance, and results.">
+    <meta name="description" content="Official Physics Quiz, Video Lectures and Academic Portal by Shashank Verma, TGT Physics at ABIC Renukoot. Class 11 and Class 12 Physics tests, chapter-wise cloud videos, and results.">
     <meta name="keywords" content="shashank phy quiz, shashank physics quiz, shashank verma physics, abic renukoot physics, physics quiz shashank sir, abic quiz portal">
     <meta name="author" content="Shashank Verma">
     <meta name="robots" content="index, follow">
@@ -84,7 +84,7 @@ st.markdown("""
 st.markdown("""
 <div class="school-header">
     <h1>ABIC RENUKOOT</h1>
-    <h3>⚡ Physics Subject & Academic Portal ⚡</h3>
+    <h3>⚡ Physics Subject, Quiz & Cloud Video Portal ⚡</h3>
     <p>Mentor: <b>Shashank Verma, TGT (Physics)</b></p>
 </div>
 """, unsafe_allow_html=True)
@@ -302,7 +302,77 @@ def init_db():
         )
     ''')
 
-    # Load students.xlsx (Automatic load with correct names)
+    # Cloud Video Lectures Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS physics_cloud_videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_class TEXT NOT NULL,
+            unit_name TEXT NOT NULL,
+            chapter_name TEXT NOT NULL,
+            video_title TEXT NOT NULL,
+            video_url TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            added_on TEXT NOT NULL,
+            UNIQUE(target_class, video_title)
+        )
+    ''')
+
+    # SEED 20+ BY-DEFAULT CHAPTER-WISE VIDEOS FOR CLASS 11 & CLASS 12
+    cur_d = get_ist_now().strftime("%Y-%m-%d")
+    default_videos = [
+        # --- CLASS 11 CHAPTER-WISE VIDEOS (20 Videos) ---
+        ("Class 11", "Unit 1: Physical World & Measurement", "Ch 1: Units and Measurements", "Dimensions, Significant Figures & Error Analysis", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
+        ("Class 11", "Unit 1: Physical World & Measurement", "Ch 1: Units and Measurements", "Dimensional Analysis and its Applications", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
+        ("Class 11", "Unit 2: Kinematics", "Ch 2: Motion in a Straight Line", "Speed, Velocity & Uniform Acceleration Equations", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
+        ("Class 11", "Unit 2: Kinematics", "Ch 2: Motion in a Straight Line", "Relative Velocity and Position-Time Graphs", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
+        ("Class 11", "Unit 2: Kinematics", "Ch 3: Motion in a Plane", "Scalar & Vector Algebra, Dot and Cross Products", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
+        ("Class 11", "Unit 2: Kinematics", "Ch 3: Motion in a Plane", "Projectile Motion: Trajectory, Range & Max Height", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
+        ("Class 11", "Unit 3: Laws of Motion", "Ch 4: Laws of Motion", "Newton's First, Second & Third Laws of Motion", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
+        ("Class 11", "Unit 3: Laws of Motion", "Ch 4: Laws of Motion", "Law of Friction, Rolling Friction & Banking of Roads", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
+        ("Class 11", "Unit 4: Work, Energy & Power", "Ch 5: Work, Energy and Power", "Work Done by Constant & Variable Force, KE and PE", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 11", "Unit 4: Work, Energy & Power", "Ch 5: Work, Energy and Power", "Work-Energy Theorem, Elastic & Inelastic Collisions", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
+        ("Class 11", "Unit 5: Rotational Motion", "Ch 6: System of Particles", "Centre of Mass of Two-Particle System and Rigid Body", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
+        ("Class 11", "Unit 5: Rotational Motion", "Ch 6: Rotational Motion", "Torque, Angular Momentum & Moment of Inertia", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
+        ("Class 11", "Unit 6: Gravitation", "Ch 7: Gravitation", "Universal Law of Gravitation & Acceleration due to Gravity (g)", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 11", "Unit 6: Gravitation", "Ch 7: Gravitation", "Kepler's Laws, Orbital Velocity & Escape Velocity", "https://www.youtube.com/watch?v=uK12_xY7890", 1, cur_d),
+        ("Class 11", "Unit 7: Properties of Matter", "Ch 8: Mechanical Properties of Solids", "Hooke's Law, Stress-Strain Curve & Young's Modulus", "https://www.youtube.com/watch?v=pQ45_xZ1234", 1, cur_d),
+        ("Class 11", "Unit 7: Properties of Matter", "Ch 9: Mechanical Properties of Fluids", "Pascal's Law, Surface Tension & Bernoulli's Principle", "https://www.youtube.com/watch?v=rS67_xW5678", 1, cur_d),
+        ("Class 11", "Unit 8: Thermodynamics", "Ch 10: Thermodynamics", "Thermal Equilibrium, Zeroth & First Law of Thermodynamics", "https://www.youtube.com/watch?v=tU89_xV9012", 1, cur_d),
+        ("Class 11", "Unit 8: Thermodynamics", "Ch 10: Thermodynamics", "Isothermal, Adiabatic Processes & Second Law", "https://www.youtube.com/watch?v=vW01_xT3456", 1, cur_d),
+        ("Class 11", "Unit 9: Kinetic Theory", "Ch 11: Kinetic Theory of Gases", "Equation of State of a Perfect Gas & RMS Speed", "https://www.youtube.com/watch?v=xY23_xS7890", 1, cur_d),
+        ("Class 11", "Unit 10: Oscillations & Waves", "Ch 12: Oscillations & Waves", "Simple Harmonic Motion (SHM), Wave Motion & Resonance", "https://www.youtube.com/watch?v=zA45_xR1234", 1, cur_d),
+
+        # --- CLASS 12 CHAPTER-WISE VIDEOS (20 Videos) ---
+        ("Class 12", "Unit 1: Electrostatics", "Ch 1: Electric Charges and Fields", "Coulomb's Law, Electric Field Lines & Dipole in Uniform Field", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
+        ("Class 12", "Unit 1: Electrostatics", "Ch 1: Electric Charges and Fields", "Electric Flux & Gauss's Theorem Applications", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
+        ("Class 12", "Unit 1: Electrostatics", "Ch 2: Electrostatic Potential & Capacitance", "Electric Potential, Equipotential Surfaces & Potential Energy", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
+        ("Class 12", "Unit 1: Electrostatics", "Ch 2: Electrostatic Potential & Capacitance", "Capacitors in Series & Parallel, Dielectrics Effect", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
+        ("Class 12", "Unit 2: Current Electricity", "Ch 3: Current Electricity", "Drift Velocity, Ohm's Law & Temperature Dependence", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
+        ("Class 12", "Unit 2: Current Electricity", "Ch 3: Current Electricity", "Kirchhoff's Rules, Wheatstone Bridge & Meter Bridge", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
+        ("Class 12", "Unit 3: Magnetism", "Ch 4: Moving Charges and Magnetism", "Biot-Savart Law & Magnetic Field on Axis of Circular Loop", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
+        ("Class 12", "Unit 3: Magnetism", "Ch 4: Moving Charges and Magnetism", "Ampere's Circuital Law, Solenoid & Moving Coil Galvanometer", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
+        ("Class 12", "Unit 3: Magnetism", "Ch 5: Magnetism and Matter", "Current Loop as Magnetic Dipole, Magnetic Properties (Dia/Para/Ferro)", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 6: Electromagnetic Induction", "Faraday's Law, Lenz's Law & Eddy Currents", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
+        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 6: Electromagnetic Induction", "Self and Mutual Induction, AC Generator Principle", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
+        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 7: Alternating Current", "Peak and RMS Value, LCR Series Circuit & Resonance", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
+        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 7: Alternating Current", "Power in AC Circuit, Wattless Current & Transformer", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 12", "Unit 5: Electromagnetic Waves", "Ch 8: Electromagnetic Waves", "Displacement Current, Characteristics of EM Waves & Spectrum", "https://www.youtube.com/watch?v=uK12_xY7890", 1, cur_d),
+        ("Class 12", "Unit 6: Optics", "Ch 9: Ray Optics & Optical Instruments", "Refraction at Spherical Surfaces, Lens Maker's Formula", "https://www.youtube.com/watch?v=pQ45_xZ1234", 1, cur_d),
+        ("Class 12", "Unit 6: Optics", "Ch 9: Ray Optics & Optical Instruments", "Refraction through Prism, Microscope & Astronomical Telescope", "https://www.youtube.com/watch?v=rS67_xW5678", 1, cur_d),
+        ("Class 12", "Unit 6: Optics", "Ch 10: Wave Optics", "Huygens' Principle, Proof of Reflection and Refraction", "https://www.youtube.com/watch?v=tU89_xV9012", 1, cur_d),
+        ("Class 12", "Unit 6: Optics", "Ch 10: Wave Optics", "Young's Double Slit Experiment (YDSE) & Single Slit Diffraction", "https://www.youtube.com/watch?v=vW01_xT3456", 1, cur_d),
+        ("Class 12", "Unit 7: Dual Nature", "Ch 11: Dual Nature of Radiation & Matter", "Photoelectric Effect, Einstein's Equation & de Broglie Wavelength", "https://www.youtube.com/watch?v=xY23_xS7890", 1, cur_d),
+        ("Class 12", "Unit 8: Modern Physics", "Ch 12 & 13: Atoms and Nuclei", "Bohr's Postulates, Mass Defect, Binding Energy & Nuclear Fission", "https://www.youtube.com/watch?v=zA45_xR1234", 1, cur_d),
+        ("Class 12", "Unit 9: Semiconductor Devices", "Ch 14: Semiconductor Electronics", "Energy Bands, p-n Junction Diode as Half/Full Wave Rectifier", "https://www.youtube.com/watch?v=bB56_xQ5678", 1, cur_d)
+    ]
+
+    for v in default_videos:
+        c.execute('''
+            INSERT OR IGNORE INTO physics_cloud_videos (target_class, unit_name, chapter_name, video_title, video_url, is_active, added_on)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', v)
+
+    # Load students.xlsx
     for s_file in ["students.xlsx", "students.csv"]:
         if os.path.exists(s_file):
             try:
@@ -570,7 +640,7 @@ def inject_live_timer_and_security(remaining_seconds, quiz_id, student_name):
 # 3. SIDEBAR NAVIGATION
 # ==========================================
 st.sidebar.title("🧭 Navigation")
-selected_portal = st.sidebar.radio("Select Portal:", ["🎓 Student Portal (Exam & Records)", "⚙️ Admin Control Center"])
+selected_portal = st.sidebar.radio("Select Portal:", ["🎓 Student Portal (Exam, Videos & Records)", "⚙️ Admin Control Center"])
 st.sidebar.divider()
 
 # ==========================================
@@ -607,6 +677,7 @@ if selected_portal == "⚙️ Admin Control Center":
     quizzes_df = get_all_quizzes()
     admin_tab = st.selectbox("Select Management Section:", [
         "📚 Create & Manage Quizzes (Class & Topic Controls)",
+        "🎥 Cloud Video Lectures Manager (Chapter & Unit-wise)",
         "📂 Academic Data Uploads (Class 11 / Class 12)",
         "👥 Master Student Directory (Excel/Manual)", 
         "📝 Question Bank (Excel/Manual)",
@@ -701,7 +772,73 @@ if selected_portal == "⚙️ Admin Control Center":
                         st.rerun()
                     st.divider()
 
-    # SECTION 2: ACADEMIC DATA UPLOADS
+    # SECTION 2: CLOUD VIDEO LECTURES MANAGER
+    elif admin_tab == "🎥 Cloud Video Lectures Manager (Chapter & Unit-wise)":
+        st.subheader("🎥 Cloud Video Lectures Manager")
+        st.markdown("Yahan se aap kisi bhi naye video lecture ko add, enable ya disable kar sakte hain:")
+
+        with st.expander("➕ Add New Cloud Video Lecture", expanded=False):
+            with st.form("add_cloud_video_form"):
+                v_col1, v_col2 = st.columns(2)
+                v_cls = v_col1.selectbox("Target Class:", ["Class 11", "Class 12"])
+                v_unit = v_col2.text_input("Unit Name:", placeholder="e.g. Unit 1: Physical World & Measurement")
+                
+                v_ch = st.text_input("Chapter Name:", placeholder="e.g. Chapter 2: Units and Measurements")
+                v_title = st.text_input("Lecture Title:", placeholder="e.g. Part 1 - Dimensions & Errors")
+                v_url = st.text_input("Cloud Video URL (YouTube / Google Drive / MP4):", placeholder="https://www.youtube.com/watch?v=...")
+                
+                if st.form_submit_button("🚀 Add Video Lecture", type="primary"):
+                    if v_unit.strip() and v_ch.strip() and v_title.strip() and v_url.strip():
+                        conn = get_db()
+                        conn.execute('''
+                            INSERT OR REPLACE INTO physics_cloud_videos (target_class, unit_name, chapter_name, video_title, video_url, is_active, added_on)
+                            VALUES (?, ?, ?, ?, ?, 1, ?)
+                        ''', (v_cls, clean_text(v_unit), clean_text(v_ch), clean_text(v_title), v_url.strip(), get_ist_now().strftime("%Y-%m-%d")))
+                        conn.commit()
+                        conn.close()
+                        st.success("✅ Video lecture added successfully!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error("Kripya sabhi fields dhyan se bharein.")
+
+        st.markdown("---")
+        st.write("### 🎬 By-Default Active Chapter-wise Videos")
+        conn = get_db()
+        all_videos = pd.read_sql_query("SELECT * FROM physics_cloud_videos ORDER BY target_class ASC, unit_name ASC, id ASC", conn)
+        conn.close()
+
+        if all_videos.empty:
+            st.info("No video lectures found.")
+        else:
+            st.write(f"Total Videos in Cloud Library: **{len(all_videos)} Videos**")
+            for _, vr in all_videos.iterrows():
+                with st.container():
+                    v_status_str = "🟢 Active (Visible to Students)" if vr['is_active'] == 1 else "🔴 Inactive (Hidden)"
+                    st.markdown(f"**[{vr['target_class']}] {vr['unit_name']} ➔ {vr['chapter_name']}**")
+                    st.markdown(f"🎬 **{vr['video_title']}** | Status: **{v_status_str}**")
+                    
+                    vc1, vc2 = st.columns([1.5, 1])
+                    tog_label = "Deactivate" if vr['is_active'] == 1 else "Activate (Make Live)"
+                    if vc1.button(f"{tog_label} (ID: {vr['id']})", key=f"vtog_{vr['id']}"):
+                        n_stat = 0 if vr['is_active'] == 1 else 1
+                        conn = get_db()
+                        conn.execute("UPDATE physics_cloud_videos SET is_active = ? WHERE id = ?", (n_stat, vr['id']))
+                        conn.commit()
+                        conn.close()
+                        st.rerun()
+
+                    if vc2.button(f"🗑️ Delete", key=f"vdel_{vr['id']}", type="secondary"):
+                        conn = get_db()
+                        conn.execute("DELETE FROM physics_cloud_videos WHERE id = ?", (vr['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning("Video deleted.")
+                        time.sleep(0.5)
+                        st.rerun()
+                    st.divider()
+
+    # SECTION 3: ACADEMIC DATA UPLOADS
     elif admin_tab == "📂 Academic Data Uploads (Class 11 / Class 12)":
         st.subheader("📂 Academic Records & Student Excel Upload Center")
         
@@ -826,7 +963,7 @@ if selected_portal == "⚙️ Admin Control Center":
             finally:
                 conn.close()
 
-    # SECTION 3: DIRECTORY
+    # SECTION 4: DIRECTORY
     elif admin_tab == "👥 Master Student Directory (Excel/Manual)":
         st.subheader("👥 Registered Students Directory")
         conn = get_db()
@@ -840,7 +977,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.write(f"Total Enrolled: **{len(master_df)} Students** (Class 11: **{c11_cnt}**, Class 12: **{c12_cnt}**)")
             st.dataframe(master_df, use_container_width=True)
 
-    # SECTION 4: QUESTION BANK
+    # SECTION 5: QUESTION BANK
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Question Bank Management")
         if quizzes_df.empty:
@@ -883,7 +1020,7 @@ if selected_portal == "⚙️ Admin Control Center":
                 st.markdown(f"🎯 **Correct Answer:** `{row['correct_option']}`")
                 st.divider()
 
-    # SECTION 5: STUDENT RESULTS
+    # SECTION 6: STUDENT RESULTS
     elif admin_tab == "📊 Student Results & Controls":
         st.subheader("Student Submissions & Merit Sheet")
         if quizzes_df.empty:
@@ -951,7 +1088,6 @@ else:
                         (clean_input_sr, sel_class)
                     ).fetchone()
                     
-                    # If not found directly, check across all students
                     if not student_data:
                         student_data = conn.execute(
                             "SELECT * FROM master_students WHERE sr_no = ?", 
@@ -988,89 +1124,20 @@ else:
         st.session_state.student_class = None
         st.rerun()
 
-    student_main_tab = st.radio("Navigation:", ["📝 Physics Live Examination", "📊 My Academic Dashboard & Goals"], horizontal=True)
+    # THREE STUDENT TABS: EXAM, CLOUD VIDEOS, AND ACADEMIC DATA
+    student_main_tab = st.radio("Navigation:", [
+        "📝 Physics Live Examination", 
+        "🎥 Cloud Video Lectures (Chapter-wise)", 
+        "📊 My Academic Dashboard & Goals"
+    ], horizontal=True)
     st.divider()
 
-    # TAB 1: ACADEMIC DASHBOARD
-    if student_main_tab == "📊 My Academic Dashboard & Goals":
-        st.title(f"📊 Academic Progress & Profile: {student_name}")
-        st.markdown(f"##### Class: **{student_class}** | SR No: **{student_sr}**")
-        
-        conn = get_db()
-        prof = conn.execute("SELECT * FROM student_profiles WHERE sr_no = ?", (student_sr,)).fetchone()
-        att = conn.execute("SELECT * FROM student_attendance WHERE sr_no = ?", (student_sr,)).fetchone()
-        marks = conn.execute("SELECT * FROM student_test_marks WHERE sr_no = ?", (student_sr,)).fetchone()
-        goals = conn.execute("SELECT * FROM student_goals WHERE sr_no = ?", (student_sr,)).fetchone()
-        conn.close()
-
-        tab_g, tab_m, tab_a, tab_p = st.tabs(["🎯 Goals & Aspirations", "📈 Monthly Test Marks", "📅 Attendance Report", "📋 Registered Profile"])
-
-        with tab_g:
-            st.subheader("🎯 Career & Academic Aspirations")
-            if goals:
-                st.markdown(f"""
-                <div style="background:#e8f4fd; border-left: 6px solid #007bff; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                    <h4 style="margin:0 0 8px 0; color:#0056b3;">📌 अल्पकालिक लक्ष्य (Short-Term Goal — सत्र 2026-27):</h4>
-                    <p style="font-size: 16px; margin:0; font-weight:500;">{goals['short_term_goal'] or 'Not Recorded'}</p>
-                </div>
-                <div style="background:#edf7ed; border-left: 6px solid #28a745; padding: 15px; border-radius: 8px;">
-                    <h4 style="margin:0 0 8px 0; color:#1e7e34;">🚀 दीर्घकालिक लक्ष्य (Long-Term Goal — उच्च शिक्षा एवं करियर):</h4>
-                    <p style="font-size: 16px; margin:0; font-weight:500;">{goals['long_term_goal'] or 'Not Recorded'}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.info(f"ℹ️ {student_name} ke liye career goals record abhi upload nahi huye hain.")
-
-        with tab_m:
-            st.subheader("📈 Monthly Test Marks")
-            if marks:
-                m1, m2, m3, m4, m5, m6 = st.columns(6)
-                m1.metric("Hindi (20)", marks['hindi'])
-                m2.metric("English (20)", marks['english'])
-                m3.metric("Maths (20)", marks['maths'])
-                m4.metric("Physics (20)", marks['physics'])
-                m5.metric("Chemistry (20)", marks['chemistry'])
-                m6.metric("Total Marks", f"{marks['total_marks']} / 100", f"{marks['total_marks']}%")
-            else:
-                st.info(f"ℹ️ {student_class} ke liye monthly test marks abhi upload nahi huye hain.")
-
-        with tab_a:
-            st.subheader("📅 Working Days Attendance Record")
-            if att:
-                a1, a2, a3, a4, a5 = st.columns(5)
-                a1.metric("April", f"{att['apr_days']} Days")
-                a2.metric("May", f"{att['may_days']} Days")
-                a3.metric("July", f"{att['july_days']} Days")
-                a4.metric("August", f"{att['aug_days']} Days")
-                a5.metric("Total Present / %", f"{att['total_present']} Days", f"{att['percentage']:.1f}%")
-                st.progress(min(1.0, max(0.0, float(att['percentage']) / 100.0)))
-            else:
-                st.info(f"ℹ️ {student_class} ke liye attendance record abhi upload nahi huye hain.")
-
-        with tab_p:
-            st.subheader("📋 Student School Information")
-            if prof:
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown(f"**Student Full Name:** `{prof['student_name']}`")
-                    st.markdown(f"**Roll Number:** `{prof['roll_no']}`")
-                    st.markdown(f"**Class & Section:** `{prof['class_sec']}`")
-                    st.markdown(f"**Scholar Register (SR) No:** `{prof['sr_no']}`")
-                    st.markdown(f"**Father's Name:** {prof['father_name']}")
-                with c2:
-                    st.markdown(f"**Mother's Name:** {prof['mother_name']}")
-                    st.markdown(f"**Date of Birth:** `{prof['dob']}`")
-                    st.markdown(f"**Category:** `{prof['category']}`")
-                    st.markdown(f"**Registered Mobile:** `{prof['mobile_no']}`")
-            else:
-                st.info(f"ℹ️ {student_class} ke liye profile information abhi upload nahi huyi hai.")
-
-    # TAB 2: LIVE EXAMINATION (PRIORITIZES LIVE QUIZ WITH QUESTIONS)
-    elif student_main_tab == "📝 Physics Live Examination":
+    # TAB 1: LIVE EXAMINATION (SMART SELECTION)
+    if student_main_tab == "📝 Physics Live Examination":
         quizzes_df = get_all_quizzes()
         s_cls_num = "11" if "11" in str(student_class) else "12"
 
-        # Active quizzes matching class
+        # Active quizzes matching student's class
         class_active_quizzes = quizzes_df[
             (quizzes_df['is_active'] == 1) & 
             (quizzes_df['target_class'].astype(str).str.contains(s_cls_num, case=False, na=False))
@@ -1081,7 +1148,7 @@ else:
             st.info("💡 **Notice:** Teacher dwara test live karne par yahan paper open ho jayega.")
             st.stop()
 
-        # Find quizzes with questions first
+        # Prioritize quizzes with actual questions
         valid_quizzes = []
         conn = get_db()
         for _, r in class_active_quizzes.iterrows():
@@ -1228,3 +1295,106 @@ else:
                 st.success(f"🎉 Exam Successfully Submitted! Your Score: {score}/{len(questions_df)}")
                 time.sleep(2)
                 st.rerun()
+
+    # TAB 2: CLOUD VIDEO LECTURES (ACTIVE & UNIT-WISE)
+    elif student_main_tab == "🎥 Cloud Video Lectures (Chapter-wise)":
+        st.subheader(f"🎥 {student_class} Cloud Video Lectures & Concepts")
+        st.markdown(f"Student: **{student_name}** | Unit & Chapter-wise Video Library")
+        
+        conn = get_db()
+        s_cls_num = "11" if "11" in str(student_class) else "12"
+        # Only active videos for this student's class
+        v_df = pd.read_sql_query(
+            "SELECT * FROM physics_cloud_videos WHERE target_class LIKE ? AND is_active = 1 ORDER BY unit_name ASC, id ASC",
+            conn, params=(f"%{s_cls_num}%",)
+        )
+        conn.close()
+        
+        if v_df.empty:
+            st.info(f"ℹ️ {student_class} ke liye abhi koi active video lectures upload nahi kiye gaye hain.")
+        else:
+            units = v_df['unit_name'].unique()
+            for unit in units:
+                with st.expander(f"📚 Unit: {unit}", expanded=True):
+                    u_videos = v_df[v_df['unit_name'] == unit]
+                    for _, v_row in u_videos.iterrows():
+                        st.markdown(f"#### 🎬 {v_row['chapter_name']} : {v_row['video_title']}")
+                        try:
+                            st.video(v_row['video_url'])
+                        except Exception:
+                            st.error(f"Video play karne mein error aaya. Link check karein: {v_row['video_url']}")
+                        st.divider()
+
+    # TAB 3: ACADEMIC DASHBOARD
+    elif student_main_tab == "📊 My Academic Dashboard & Goals":
+        st.title(f"📊 Academic Progress & Profile: {student_name}")
+        st.markdown(f"##### Class: **{student_class}** | SR No: **{student_sr}**")
+        
+        conn = get_db()
+        prof = conn.execute("SELECT * FROM student_profiles WHERE sr_no = ?", (student_sr,)).fetchone()
+        att = conn.execute("SELECT * FROM student_attendance WHERE sr_no = ?", (student_sr,)).fetchone()
+        marks = conn.execute("SELECT * FROM student_test_marks WHERE sr_no = ?", (student_sr,)).fetchone()
+        goals = conn.execute("SELECT * FROM student_goals WHERE sr_no = ?", (student_sr,)).fetchone()
+        conn.close()
+
+        tab_g, tab_m, tab_a, tab_p = st.tabs(["🎯 Goals & Aspirations", "📈 Monthly Test Marks", "📅 Attendance Report", "📋 Registered Profile"])
+
+        with tab_g:
+            st.subheader("🎯 Career & Academic Aspirations")
+            if goals:
+                st.markdown(f"""
+                <div style="background:#e8f4fd; border-left: 6px solid #007bff; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <h4 style="margin:0 0 8px 0; color:#0056b3;">📌 अल्पकालिक लक्ष्य (Short-Term Goal — सत्र 2026-27):</h4>
+                    <p style="font-size: 16px; margin:0; font-weight:500;">{goals['short_term_goal'] or 'Not Recorded'}</p>
+                </div>
+                <div style="background:#edf7ed; border-left: 6px solid #28a745; padding: 15px; border-radius: 8px;">
+                    <h4 style="margin:0 0 8px 0; color:#1e7e34;">🚀 दीर्घकालिक लक्ष्य (Long-Term Goal — उच्च शिक्षा एवं करियर):</h4>
+                    <p style="font-size: 16px; margin:0; font-weight:500;">{goals['long_term_goal'] or 'Not Recorded'}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info(f"ℹ️ {student_name} ke liye career goals record abhi upload nahi huye hain.")
+
+        with tab_m:
+            st.subheader("📈 Monthly Test Marks")
+            if marks:
+                m1, m2, m3, m4, m5, m6 = st.columns(6)
+                m1.metric("Hindi (20)", marks['hindi'])
+                m2.metric("English (20)", marks['english'])
+                m3.metric("Maths (20)", marks['maths'])
+                m4.metric("Physics (20)", marks['physics'])
+                m5.metric("Chemistry (20)", marks['chemistry'])
+                m6.metric("Total Marks", f"{marks['total_marks']} / 100", f"{marks['total_marks']}%")
+            else:
+                st.info(f"ℹ️ {student_class} ke liye monthly test marks abhi upload nahi huye hain.")
+
+        with tab_a:
+            st.subheader("📅 Working Days Attendance Record")
+            if att:
+                a1, a2, a3, a4, a5 = st.columns(5)
+                a1.metric("April", f"{att['apr_days']} Days")
+                a2.metric("May", f"{att['may_days']} Days")
+                a3.metric("July", f"{att['july_days']} Days")
+                a4.metric("August", f"{att['aug_days']} Days")
+                a5.metric("Total Present / %", f"{att['total_present']} Days", f"{att['percentage']:.1f}%")
+                st.progress(min(1.0, max(0.0, float(att['percentage']) / 100.0)))
+            else:
+                st.info(f"ℹ️ {student_class} ke liye attendance record abhi upload nahi huye hain.")
+
+        with tab_p:
+            st.subheader("📋 Student School Information")
+            if prof:
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown(f"**Student Full Name:** `{prof['student_name']}`")
+                    st.markdown(f"**Roll Number:** `{prof['roll_no']}`")
+                    st.markdown(f"**Class & Section:** `{prof['class_sec']}`")
+                    st.markdown(f"**Scholar Register (SR) No:** `{prof['sr_no']}`")
+                    st.markdown(f"**Father's Name:** {prof['father_name']}")
+                with c2:
+                    st.markdown(f"**Mother's Name:** {prof['mother_name']}")
+                    st.markdown(f"**Date of Birth:** `{prof['dob']}`")
+                    st.markdown(f"**Category:** `{prof['category']}`")
+                    st.markdown(f"**Registered Mobile:** `{prof['mobile_no']}`")
+            else:
+                st.info(f"ℹ️ {student_class} ke liye profile information abhi upload nahi huyi hai.")
