@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Google Indexing & Search Optimization
+# Google Indexing & Crawler Meta Tags (SEO)
 st.markdown("""
 <head>
     <meta name="description" content="Official Physics Quiz and Academic Portal by Shashank Verma, TGT Physics at ABIC Renukoot. Class 11 and Class 12 Physics tests, student attendance, and results.">
@@ -174,7 +174,7 @@ def init_db():
             normalized_name TEXT NOT NULL,
             roll_no INTEGER,
             target_class TEXT NOT NULL,
-            UNIQUE(target_class, normalized_name)
+            UNIQUE(target_class, sr_no)
         )
     ''')
     
@@ -302,7 +302,26 @@ def init_db():
         )
     ''')
 
-    # SYNC STUDENTS.XLSX (Class 11 & Class 12 automatically mapped)
+    # DEFAULT ACTIVE QUIZZES (Always Ready & LIVE)
+    now_time = get_ist_now() - timedelta(hours=2)
+    default_start = now_time.strftime("%Y-%m-%d %H:%M")
+    default_end = (now_time + timedelta(days=60)).strftime("%Y-%m-%d %H:%M")
+
+    # Insert or update Class 11 Quiz
+    c.execute('''
+        INSERT OR IGNORE INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+        VALUES ('Class 11', 'Laws of Motion & Work Energy', 'Class 11 - Physics Exam', 15, ?, ?, 1)
+    ''', (default_start, default_end))
+    c.execute("UPDATE quizzes SET is_active = 1 WHERE target_class = 'Class 11' AND is_active = 0")
+
+    # Insert or update Class 12 Quiz
+    c.execute('''
+        INSERT OR IGNORE INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+        VALUES ('Class 12', 'Electrostatics & Magnetism', 'Class 12 - Physics Exam', 20, ?, ?, 1)
+    ''', (default_start, default_end))
+    c.execute("UPDATE quizzes SET is_active = 1 WHERE target_class = 'Class 12' AND is_active = 0")
+
+    # Load students.xlsx (Class 11 & Class 12 automatic mapping)
     for s_file in ["students.xlsx", "students.csv"]:
         if os.path.exists(s_file):
             try:
@@ -324,7 +343,7 @@ def init_db():
             except Exception:
                 pass
 
-    # SYNC XII B INFORMATION.XLSX
+    # Load XII B INFORMATION.xlsx
     if os.path.exists("XII B INFORMATION.xlsx"):
         try:
             df_info = pd.read_excel("XII B INFORMATION.xlsx", sheet_name="Sheet1 (5)")
@@ -606,8 +625,8 @@ if selected_portal == "⚙️ Admin Control Center":
     st.title("⚙️ Teacher & Examination Control Center")
     quizzes_df = get_all_quizzes()
     admin_tab = st.selectbox("Select Management Section:", [
+        "📚 Create & Manage Quizzes (Class & Topic Controls)",
         "📂 Academic Data Uploads (Class 11 / Class 12)",
-        "📚 Create & Manage Quizzes (Class & Topic Controls)", 
         "👥 Master Student Directory (Excel/Manual)", 
         "📝 Question Bank (Excel/Manual)",
         "📊 Student Results & Controls"
@@ -615,8 +634,90 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # SECTION 0: ACADEMIC DATA UPLOADS
-    if admin_tab == "📂 Academic Data Uploads (Class 11 / Class 12)":
+    # SECTION 1: QUIZZES (CLASS CONTROLS & INSTANT LIVE)
+    if admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
+        st.subheader("Quizzes & Instant Activation")
+        with st.expander("➕ Create New Quiz", expanded=False):
+            with st.form("new_quiz_form"):
+                c_cls1, c_cls2 = st.columns(2)
+                target_class_choice = c_cls1.selectbox("Select Target Class:", ["Class 11", "Class 12", "Class 9", "Class 10"])
+                topic_name = c_cls2.text_input("Topic Name:", value="Motion in a Straight Line")
+                q_title = st.text_input("Quiz Title:", value=f"{target_class_choice} - {topic_name}")
+                q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
+                c_d1, c_d2 = st.columns(2)
+                cur_ist = get_ist_now()
+                start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
+                start_time = c_d1.time_input("Start Time (IST):", value=(cur_ist - timedelta(minutes=10)).time())
+                end_date = c_d2.date_input("End Date (IST):", value=(cur_ist + timedelta(days=60)).date())
+                end_time = c_d2.time_input("End Time (IST):", value=cur_ist.time())
+                
+                if st.form_submit_button("Create Quiz"):
+                    start_str = f"{start_date} {start_time.strftime('%H:%M')}"
+                    end_str = f"{end_date} {end_time.strftime('%H:%M')}"
+                    c_title = clean_text(q_title)
+                    c_top = clean_text(topic_name)
+                    if c_title:
+                        try:
+                            conn = get_db()
+                            c = conn.cursor()
+                            c.execute('''
+                                INSERT INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
+                                VALUES (?, ?, ?, ?, ?, ?, 1)
+                            ''', (target_class_choice, c_top, c_title, q_dur, start_str, end_str))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Quiz '{c_title}' created successfully!")
+                            time.sleep(1)
+                            st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.error("A quiz with this title already exists.")
+
+        st.markdown("---")
+        if not quizzes_df.empty:
+            for _, r in quizzes_df.iterrows():
+                with st.container():
+                    st.markdown(f"### 📝 **{r['quiz_title']}**")
+                    cls_val = r['target_class'] if 'target_class' in r and pd.notna(r['target_class']) else 'Class 11'
+                    top_val = r['topic'] if 'topic' in r and pd.notna(r['topic']) else 'General'
+                    st.markdown(f"🏷️ **Target Class:** `{cls_val}` | 📖 **Topic:** `{top_val}`")
+                    st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active (LIVE)' if r['is_active'] == 1 else 'Disabled'}`")
+                    
+                    col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
+                    
+                    if col_b1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
+                        new_status = 0 if r['is_active'] == 1 else 1
+                        conn = get_db()
+                        if new_status == 1:
+                            conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
+                        conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
+                        conn.commit()
+                        conn.close()
+                        st.rerun()
+                    
+                    if col_b2.button(f"⚡ Start NOW (Instant Live)", key=f"now_{r['id']}"):
+                        now_start = (get_ist_now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+                        now_end = (get_ist_now() + timedelta(days=60)).strftime("%Y-%m-%d %H:%M")
+                        conn = get_db()
+                        conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
+                        conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
+                        conn.commit()
+                        conn.close()
+                        st.success(f"{cls_val} ke liye yeh Quiz turant LIVE kar diya gaya hai!")
+                        time.sleep(1)
+                        st.rerun()
+                    
+                    if col_b3.button(f"🗑️ Delete Quiz", key=f"del_quiz_{r['id']}", type="secondary"):
+                        conn = get_db()
+                        conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
+                        conn.commit()
+                        conn.close()
+                        st.warning("Quiz deleted.")
+                        time.sleep(1)
+                        st.rerun()
+                    st.divider()
+
+    # SECTION 2: ACADEMIC DATA UPLOADS
+    elif admin_tab == "📂 Academic Data Uploads (Class 11 / Class 12)":
         st.subheader("📂 Academic Records & Student Excel Upload Center")
         
         target_upload_class = st.selectbox("Kaunsi Class ke liye upload karna hai?", ["Class 11", "Class 12"])
@@ -740,91 +841,7 @@ if selected_portal == "⚙️ Admin Control Center":
             finally:
                 conn.close()
 
-    # SECTION 1: QUIZZES
-    elif admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
-        st.subheader("Quizzes & Class Controls")
-        with st.expander("➕ Create New Quiz", expanded=False):
-            with st.form("new_quiz_form"):
-                c_cls1, c_cls2 = st.columns(2)
-                target_class_choice = c_cls1.selectbox("Select Target Class:", ["Class 11", "Class 12", "Class 9", "Class 10"])
-                topic_name = c_cls2.text_input("Topic Name:", value="Motion in a Straight Line")
-                q_title = st.text_input("Quiz Title:", value=f"{target_class_choice} - {topic_name}")
-                q_dur = st.number_input("Duration (Minutes):", min_value=1, max_value=300, value=15)
-                c_d1, c_d2 = st.columns(2)
-                cur_ist = get_ist_now()
-                start_date = c_d1.date_input("Start Date (IST):", value=cur_ist.date())
-                start_time = c_d1.time_input("Start Time (IST):", value=(cur_ist - timedelta(minutes=10)).time())
-                end_date = c_d2.date_input("End Date (IST):", value=(cur_ist + timedelta(days=7)).date())
-                end_time = c_d2.time_input("End Time (IST):", value=cur_ist.time())
-                
-                if st.form_submit_button("Create Quiz"):
-                    start_str = f"{start_date} {start_time.strftime('%H:%M')}"
-                    end_str = f"{end_date} {end_time.strftime('%H:%M')}"
-                    c_title = clean_text(q_title)
-                    c_top = clean_text(topic_name)
-                    if c_title:
-                        try:
-                            conn = get_db()
-                            c = conn.cursor()
-                            c.execute('''
-                                INSERT INTO quizzes (target_class, topic, quiz_title, duration_minutes, start_datetime, end_datetime, is_active)
-                                VALUES (?, ?, ?, ?, ?, ?, 0)
-                            ''', (target_class_choice, c_top, c_title, q_dur, start_str, end_str))
-                            conn.commit()
-                            conn.close()
-                            st.success(f"Quiz '{c_title}' created successfully!")
-                            time.sleep(1)
-                            st.rerun()
-                        except sqlite3.IntegrityError:
-                            st.error("A quiz with this title already exists.")
-
-        st.markdown("---")
-        if not quizzes_df.empty:
-            for _, r in quizzes_df.iterrows():
-                with st.container():
-                    st.markdown(f"### 📝 **{r['quiz_title']}**")
-                    cls_val = r['target_class'] if 'target_class' in r and pd.notna(r['target_class']) else 'Class 11'
-                    top_val = r['topic'] if 'topic' in r and pd.notna(r['topic']) else 'General'
-                    st.markdown(f"🏷️ **Target Class:** `{cls_val}` | 📖 **Topic:** `{top_val}`")
-                    st.markdown(f"⏱️ **Duration:** `{r['duration_minutes']} mins` | **Status:** `{'Active (LIVE)' if r['is_active'] == 1 else 'Disabled'}`")
-                    
-                    col_b1, col_b2, col_b3 = st.columns([1.5, 1.5, 1])
-                    
-                    # Toggle Active: Sirf usi Class ke doosre tests ko band karega
-                    if col_b1.button(f"Toggle Active ({r['quiz_title']})", key=f"tog_{r['id']}"):
-                        new_status = 0 if r['is_active'] == 1 else 1
-                        conn = get_db()
-                        if new_status == 1:
-                            conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
-                        conn.execute("UPDATE quizzes SET is_active = ? WHERE id = ?", (new_status, r['id']))
-                        conn.commit()
-                        conn.close()
-                        st.rerun()
-                    
-                    # Start NOW: Sirf usi class ke liye LIVE
-                    if col_b2.button(f"⚡ Start NOW (Live)", key=f"now_{r['id']}"):
-                        now_start = (get_ist_now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
-                        now_end = (get_ist_now() + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
-                        conn = get_db()
-                        conn.execute("UPDATE quizzes SET is_active = 0 WHERE target_class = ?", (cls_val,))
-                        conn.execute("UPDATE quizzes SET start_datetime = ?, end_datetime = ?, is_active = 1 WHERE id = ?", (now_start, now_end, r['id']))
-                        conn.commit()
-                        conn.close()
-                        st.success(f"{cls_val} ke liye yeh Quiz LIVE kar diya gaya hai!")
-                        time.sleep(1)
-                        st.rerun()
-                    
-                    if col_b3.button(f"🗑️ Delete Quiz", key=f"del_quiz_{r['id']}", type="secondary"):
-                        conn = get_db()
-                        conn.execute("DELETE FROM quizzes WHERE id = ?", (r['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.warning("Quiz deleted.")
-                        time.sleep(1)
-                        st.rerun()
-                    st.divider()
-
-    # SECTION 2: DIRECTORY
+    # SECTION 3: DIRECTORY
     elif admin_tab == "👥 Master Student Directory (Excel/Manual)":
         st.subheader("👥 Registered Students Directory")
         conn = get_db()
@@ -838,7 +855,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.write(f"Total Enrolled: **{len(master_df)} Students** (Class 11: **{c11_cnt}**, Class 12: **{c12_cnt}**)")
             st.dataframe(master_df, use_container_width=True)
 
-    # SECTION 3: QUESTION BANK
+    # SECTION 4: QUESTION BANK
     elif admin_tab == "📝 Question Bank (Excel/Manual)":
         st.subheader("Question Bank Management")
         if quizzes_df.empty:
@@ -881,7 +898,7 @@ if selected_portal == "⚙️ Admin Control Center":
                 st.markdown(f"🎯 **Correct Answer:** `{row['correct_option']}`")
                 st.divider()
 
-    # SECTION 4: STUDENT RESULTS
+    # SECTION 5: STUDENT RESULTS
     elif admin_tab == "📊 Student Results & Controls":
         st.subheader("Student Submissions & Merit Sheet")
         if quizzes_df.empty:
@@ -928,7 +945,7 @@ else:
     if "student_class" not in st.session_state:
         st.session_state.student_class = None
 
-    # LOGIN FORM
+    # LOGIN FORM (NO NAME INPUT REQUIRED)
     if not st.session_state.student_sr:
         st.subheader("🎓 Student Examination & Academic Portal")
         st.markdown("Pehle apni **Class** select karein aur apna **Password (SR Number)** darj karein.")
@@ -1052,18 +1069,21 @@ else:
             else:
                 st.info(f"ℹ️ {student_class} ke liye profile information abhi upload nahi huyi hai.")
 
-    # TAB 2: LIVE EXAMINATION (STRICT CLASS-WISE FILTER)
+    # TAB 2: LIVE EXAMINATION (STRICT & ALWAYS VISIBLE CLASS FILTER)
     elif student_main_tab == "📝 Physics Live Examination":
         quizzes_df = get_all_quizzes()
         
-        # STRICT FILTER: Sirf log-in kiye gaye student ki class ka active quiz
+        # Student Class number (11 ya 12)
+        s_cls_num = "11" if "11" in str(student_class) else "12"
+
+        # Filter: Jo quiz ACTIVE ho aur uski class student ki class se match ho
         class_active_quizzes = quizzes_df[
             (quizzes_df['is_active'] == 1) & 
-            (quizzes_df['target_class'].str.strip().str.lower() == student_class.strip().lower())
+            (quizzes_df['target_class'].astype(str).str.contains(s_cls_num, case=False, na=False))
         ] if not quizzes_df.empty else pd.DataFrame()
 
         if class_active_quizzes.empty:
-            st.warning(f"🛑 {student_class} ke liye abhi koi Physics Quiz Live nahi hai. Kripya apne subject teacher se sampark karein.")
+            st.warning(f"🛑 {student_class} ke liye abhi koi Physics Quiz Live nahi hai. Kripya subject teacher se sampark karein.")
             st.stop()
 
         if len(class_active_quizzes) == 1:
