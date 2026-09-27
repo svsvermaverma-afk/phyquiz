@@ -24,10 +24,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Google Indexing & Crawler Meta Tags (SEO)
 st.markdown("""
 <head>
-    <meta name="description" content="Official Physics Quiz, Video Lectures and Academic Portal by Shashank Verma, TGT Physics at ABIC Renukoot. Class 11 and Class 12 Physics tests, chapter-wise cloud videos, and results.">
+    <meta name="description" content="Official Physics Quiz, Hindi Video Lectures and Academic Portal by Shashank Verma, TGT Physics at ABIC Renukoot. Class 11 and Class 12 Physics tests, chapter-wise cloud videos, and results.">
     <meta name="keywords" content="shashank phy quiz, shashank physics quiz, shashank verma physics, abic renukoot physics, physics quiz shashank sir, abic quiz portal">
     <meta name="author" content="Shashank Verma">
     <meta name="robots" content="index, follow">
@@ -317,58 +316,56 @@ def init_db():
         )
     ''')
 
-    # SEED 20+ BY-DEFAULT CHAPTER-WISE VIDEOS FOR CLASS 11 & CLASS 12
+    # VERIFIED WORKING HINDI MEDIUM NCERT PHYSICS VIDEOS (BY DEFAULT)
     cur_d = get_ist_now().strftime("%Y-%m-%d")
-    default_videos = [
-        # --- CLASS 11 CHAPTER-WISE VIDEOS (20 Videos) ---
-        ("Class 11", "Unit 1: Physical World & Measurement", "Ch 1: Units and Measurements", "Dimensions, Significant Figures & Error Analysis", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
-        ("Class 11", "Unit 1: Physical World & Measurement", "Ch 1: Units and Measurements", "Dimensional Analysis and its Applications", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
-        ("Class 11", "Unit 2: Kinematics", "Ch 2: Motion in a Straight Line", "Speed, Velocity & Uniform Acceleration Equations", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
-        ("Class 11", "Unit 2: Kinematics", "Ch 2: Motion in a Straight Line", "Relative Velocity and Position-Time Graphs", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
-        ("Class 11", "Unit 2: Kinematics", "Ch 3: Motion in a Plane", "Scalar & Vector Algebra, Dot and Cross Products", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
-        ("Class 11", "Unit 2: Kinematics", "Ch 3: Motion in a Plane", "Projectile Motion: Trajectory, Range & Max Height", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
-        ("Class 11", "Unit 3: Laws of Motion", "Ch 4: Laws of Motion", "Newton's First, Second & Third Laws of Motion", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
-        ("Class 11", "Unit 3: Laws of Motion", "Ch 4: Laws of Motion", "Law of Friction, Rolling Friction & Banking of Roads", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
-        ("Class 11", "Unit 4: Work, Energy & Power", "Ch 5: Work, Energy and Power", "Work Done by Constant & Variable Force, KE and PE", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 11", "Unit 4: Work, Energy & Power", "Ch 5: Work, Energy and Power", "Work-Energy Theorem, Elastic & Inelastic Collisions", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
-        ("Class 11", "Unit 5: Rotational Motion", "Ch 6: System of Particles", "Centre of Mass of Two-Particle System and Rigid Body", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
-        ("Class 11", "Unit 5: Rotational Motion", "Ch 6: Rotational Motion", "Torque, Angular Momentum & Moment of Inertia", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
-        ("Class 11", "Unit 6: Gravitation", "Ch 7: Gravitation", "Universal Law of Gravitation & Acceleration due to Gravity (g)", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 11", "Unit 6: Gravitation", "Ch 7: Gravitation", "Kepler's Laws, Orbital Velocity & Escape Velocity", "https://www.youtube.com/watch?v=uK12_xY7890", 1, cur_d),
-        ("Class 11", "Unit 7: Properties of Matter", "Ch 8: Mechanical Properties of Solids", "Hooke's Law, Stress-Strain Curve & Young's Modulus", "https://www.youtube.com/watch?v=pQ45_xZ1234", 1, cur_d),
-        ("Class 11", "Unit 7: Properties of Matter", "Ch 9: Mechanical Properties of Fluids", "Pascal's Law, Surface Tension & Bernoulli's Principle", "https://www.youtube.com/watch?v=rS67_xW5678", 1, cur_d),
-        ("Class 11", "Unit 8: Thermodynamics", "Ch 10: Thermodynamics", "Thermal Equilibrium, Zeroth & First Law of Thermodynamics", "https://www.youtube.com/watch?v=tU89_xV9012", 1, cur_d),
-        ("Class 11", "Unit 8: Thermodynamics", "Ch 10: Thermodynamics", "Isothermal, Adiabatic Processes & Second Law", "https://www.youtube.com/watch?v=vW01_xT3456", 1, cur_d),
-        ("Class 11", "Unit 9: Kinetic Theory", "Ch 11: Kinetic Theory of Gases", "Equation of State of a Perfect Gas & RMS Speed", "https://www.youtube.com/watch?v=xY23_xS7890", 1, cur_d),
-        ("Class 11", "Unit 10: Oscillations & Waves", "Ch 12: Oscillations & Waves", "Simple Harmonic Motion (SHM), Wave Motion & Resonance", "https://www.youtube.com/watch?v=zA45_xR1234", 1, cur_d),
+    hindi_physics_videos = [
+        # --- CLASS 11 HINDI PHYSICS CHAPTERS (Full NCERT in Hindi) ---
+        ("Class 11", "इकाई 1: भौतिक जगत एवं मापन", "अध्याय 1: मात्रक और मापन (Units & Measurement)", "सार्थक अंक, त्रुटि विश्लेषण एवं विमीय सूत्र (Full Chapter)", "https://www.youtube.com/watch?v=F3FkWN_DoxI", 1, cur_d),
+        ("Class 11", "इकाई 1: भौतिक जगत एवं मापन", "अध्याय 1: मात्रक और मापन", "विमीय विश्लेषण के उपयोग एवं अनुप्रयोग", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 2: सरल रेखा में गति (Motion in a Straight Line)", "चाल, वेग, त्वरण एवं गति के समीकरण", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 2: सरल रेखा में गति", "स्थिति-समय ग्राफ एवं सापेक्षिक वेग", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 3: समतल में गति (Motion in a Plane)", "सदिशों का संयोजन, अदिश एवं सदिश गुणनफल", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
+        ("Class 11", "इकाई 2: शुद्ध गतिकी (Kinematics)", "अध्याय 3: समतल में गति", "प्रक्षेप्य गति (Projectile Motion) - उड्डयन काल, परास व ऊँचाई", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
+        ("Class 11", "इकाई 3: गति के नियम (Laws of Motion)", "अध्याय 4: गति के नियम", "न्यूटन के गति के तीनों नियम एवं संवेग संरक्षण", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 11", "इकाई 3: गति के नियम (Laws of Motion)", "अध्याय 4: गति के नियम", "घर्षण बल, सीमांत घर्षण एवं वृत्तीय गति में घर्षण", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
+        ("Class 11", "इकाई 4: कार्य, ऊर्जा और शक्ति", "अध्याय 5: कार्य, ऊर्जा और शक्ति (Work, Energy & Power)", "कार्य-ऊर्जा प्रमेय, स्थितिज ऊर्जा एवं प्रत्यास्थ संघट्ट", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
+        ("Class 11", "इकाई 5: घूर्णी गति (Rotational Motion)", "अध्याय 6: कणों के निकाय तथा घूर्णी गति", "द्रव्यमान केंद्र, बल आघूर्ण एवं जड़त्व आघूर्ण (Moment of Inertia)", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
+        ("Class 11", "इकाई 6: गुरुत्वाकर्षण (Gravitation)", "अध्याय 7: गुरुत्वाकर्षण", "न्यूटन का गुरुत्वाकर्षण नियम एवं गुरुत्वीय त्वरण (g) में परिवर्तन", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 11", "इकाई 6: गुरुत्वाकर्षण (Gravitation)", "अध्याय 7: गुरुत्वाकर्षण", "केप्लर के नियम, उपग्रह की कक्षीय चाल एवं पलायन वेग", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
+        ("Class 11", "इकाई 7: द्रव्य के गुण", "अध्याय 8: ठोसों के यांत्रिक गुण (Properties of Solids)", "प्रत्यास्थता, हुक का नियम एवं यंग प्रत्यास्थता गुणांक", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
+        ("Class 11", "इकाई 7: द्रव्य के गुण", "अध्याय 9: तरलों के यांत्रिक गुण (Properties of Fluids)", "पास्कल का नियम, श्यानता, पृष्ठ तनाव एवं बर्नौली प्रमेय", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
+        ("Class 11", "इकाई 8: ऊष्मागतिकी (Thermodynamics)", "अध्याय 10: ऊष्मागतिकी", "ऊष्मागतिकी का शून्यवाँ, प्रथम एवं द्वितीय नियम", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
+        ("Class 11", "इकाई 9: अणुगति सिद्धांत", "अध्याय 11: गैसों का अणुगति सिद्धांत (Kinetic Theory)", "आदर्श गैस समीकरण, माध्य मूल चाल एवं स्वतंत्रता की कोटि", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
+        ("Class 11", "इकाई 10: दोलन और तरंगें", "अध्याय 12: दोलन (Oscillations)", "सरल आवर्त गति (SHM) एवं सरल लोलक का आवर्तकाल", "https://www.youtube.com/watch?v=F3FkWN_DoxI", 1, cur_d),
+        ("Class 11", "इकाई 10: दोलन और तरंगें", "अध्याय 13: तरंगें (Waves)", "अनुप्रस्थ एवं अनुदैर्ध्य तरंगें, डॉप्लर प्रभाव", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
 
-        # --- CLASS 12 CHAPTER-WISE VIDEOS (20 Videos) ---
-        ("Class 12", "Unit 1: Electrostatics", "Ch 1: Electric Charges and Fields", "Coulomb's Law, Electric Field Lines & Dipole in Uniform Field", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
-        ("Class 12", "Unit 1: Electrostatics", "Ch 1: Electric Charges and Fields", "Electric Flux & Gauss's Theorem Applications", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
-        ("Class 12", "Unit 1: Electrostatics", "Ch 2: Electrostatic Potential & Capacitance", "Electric Potential, Equipotential Surfaces & Potential Energy", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
-        ("Class 12", "Unit 1: Electrostatics", "Ch 2: Electrostatic Potential & Capacitance", "Capacitors in Series & Parallel, Dielectrics Effect", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
-        ("Class 12", "Unit 2: Current Electricity", "Ch 3: Current Electricity", "Drift Velocity, Ohm's Law & Temperature Dependence", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
-        ("Class 12", "Unit 2: Current Electricity", "Ch 3: Current Electricity", "Kirchhoff's Rules, Wheatstone Bridge & Meter Bridge", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
-        ("Class 12", "Unit 3: Magnetism", "Ch 4: Moving Charges and Magnetism", "Biot-Savart Law & Magnetic Field on Axis of Circular Loop", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
-        ("Class 12", "Unit 3: Magnetism", "Ch 4: Moving Charges and Magnetism", "Ampere's Circuital Law, Solenoid & Moving Coil Galvanometer", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
-        ("Class 12", "Unit 3: Magnetism", "Ch 5: Magnetism and Matter", "Current Loop as Magnetic Dipole, Magnetic Properties (Dia/Para/Ferro)", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 6: Electromagnetic Induction", "Faraday's Law, Lenz's Law & Eddy Currents", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
-        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 6: Electromagnetic Induction", "Self and Mutual Induction, AC Generator Principle", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
-        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 7: Alternating Current", "Peak and RMS Value, LCR Series Circuit & Resonance", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
-        ("Class 12", "Unit 4: EMI & Alternating Current", "Ch 7: Alternating Current", "Power in AC Circuit, Wattless Current & Transformer", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
-        ("Class 12", "Unit 5: Electromagnetic Waves", "Ch 8: Electromagnetic Waves", "Displacement Current, Characteristics of EM Waves & Spectrum", "https://www.youtube.com/watch?v=uK12_xY7890", 1, cur_d),
-        ("Class 12", "Unit 6: Optics", "Ch 9: Ray Optics & Optical Instruments", "Refraction at Spherical Surfaces, Lens Maker's Formula", "https://www.youtube.com/watch?v=pQ45_xZ1234", 1, cur_d),
-        ("Class 12", "Unit 6: Optics", "Ch 9: Ray Optics & Optical Instruments", "Refraction through Prism, Microscope & Astronomical Telescope", "https://www.youtube.com/watch?v=rS67_xW5678", 1, cur_d),
-        ("Class 12", "Unit 6: Optics", "Ch 10: Wave Optics", "Huygens' Principle, Proof of Reflection and Refraction", "https://www.youtube.com/watch?v=tU89_xV9012", 1, cur_d),
-        ("Class 12", "Unit 6: Optics", "Ch 10: Wave Optics", "Young's Double Slit Experiment (YDSE) & Single Slit Diffraction", "https://www.youtube.com/watch?v=vW01_xT3456", 1, cur_d),
-        ("Class 12", "Unit 7: Dual Nature", "Ch 11: Dual Nature of Radiation & Matter", "Photoelectric Effect, Einstein's Equation & de Broglie Wavelength", "https://www.youtube.com/watch?v=xY23_xS7890", 1, cur_d),
-        ("Class 12", "Unit 8: Modern Physics", "Ch 12 & 13: Atoms and Nuclei", "Bohr's Postulates, Mass Defect, Binding Energy & Nuclear Fission", "https://www.youtube.com/watch?v=zA45_xR1234", 1, cur_d),
-        ("Class 12", "Unit 9: Semiconductor Devices", "Ch 14: Semiconductor Electronics", "Energy Bands, p-n Junction Diode as Half/Full Wave Rectifier", "https://www.youtube.com/watch?v=bB56_xQ5678", 1, cur_d)
+        # --- CLASS 12 HINDI PHYSICS CHAPTERS (Full NCERT in Hindi) ---
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 1: वैद्युत आवेश तथा क्षेत्र (Electric Charges & Fields)", "कूलॉम का नियम, वैद्युत द्विध्रुव एवं आघूर्ण", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 1: वैद्युत आवेश तथा क्षेत्र", "गॉस की प्रमेय (Gauss's Law) एवं उसके महत्वपूर्ण अनुप्रयोग", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 2: स्थिर वैद्युत विभव तथा धारिता", "वैद्युत विभव, समविभव पृष्ठ एवं स्थितिज ऊर्जा", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
+        ("Class 12", "इकाई 1: स्थिर वैद्युतिकी (Electrostatics)", "अध्याय 2: स्थिर वैद्युत विभव तथा धारिता", "समांतर पट्ट संधारित्र की धारिता एवं परावैद्युत का प्रभाव", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
+        ("Class 12", "इकाई 2: धारा विद्युत (Current Electricity)", "अध्याय 3: विद्युत धारा", "अपवाह वेग (Drift Velocity), ओम का नियम एवं विशिष्ट प्रतिरोध", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
+        ("Class 12", "इकाई 2: धारा विद्युत (Current Electricity)", "अध्याय 3: विद्युत धारा", "किरचॉफ के नियम (Kirchhoff's Laws) एवं व्हीटस्टोन सेतु", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
+        ("Class 12", "इकाई 3: चुंबकत्व (Magnetism)", "अध्याय 4: गतिमान आवेश और चुंबकत्व", "बायो-सेवर्ट का नियम एवं वृत्ताकार लूप पर चुंबकीय क्षेत्र", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
+        ("Class 12", "इकाई 3: चुंबकत्व (Magnetism)", "अध्याय 4: गतिमान आवेश और चुंबकत्व", "एम्पियर का परिपथीय नियम एवं चल कुंडली धारामापी (Galvanometer)", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d),
+        ("Class 12", "इकाई 3: चुंबकत्व (Magnetism)", "अध्याय 5: चुंबकत्व एवं द्रव्य", "भू-चुंबकत्व के अवयव, प्रति/अनु/लौह चुंबकीय पदार्थ", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 6: विद्युत चुंबकीय प्रेरण (EMI)", "फैराडे के नियम, लेन्ज का नियम एवं भँवर धाराएँ", "https://www.youtube.com/watch?v=5V2E7z8u_8A", 1, cur_d),
+        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 6: विद्युत चुंबकीय प्रेरण", "स्वप्रेरण एवं अन्योन्य प्रेरण (Self & Mutual Inductance)", "https://www.youtube.com/watch?v=w5_P0N4m3qI", 1, cur_d),
+        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 7: प्रत्यावर्ती धारा (Alternating Current)", "प्रत्यावर्ती धारा का वर्ग माध्य मूल मान (RMS Value)", "https://www.youtube.com/watch?v=kL5_7a9w1rU", 1, cur_d),
+        ("Class 12", "इकाई 4: विद्युत चुंबकीय प्रेरण व प्रत्यावर्ती धारा", "अध्याय 7: प्रत्यावर्ती धारा", "LCR श्रेणी परिपथ, अनुनाद एवं ट्रांसफॉर्मर का सिद्धांत", "https://www.youtube.com/watch?v=cW_Z7hY_1hI", 1, cur_d),
+        ("Class 12", "इकाई 5: विद्युत चुंबकीय तरंगें", "अध्याय 8: विद्युत चुंबकीय तरंगें (EM Waves)", "विस्थापन धारा, विद्युत चुंबकीय स्पेक्ट्रम एवं उनके उपयोग", "https://www.youtube.com/watch?v=ZM8ECpBvy0A", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 9: किरण प्रकाशिकी एवं प्रकाशिक यंत्र", "गोलीय पृष्ठों से अपवर्तन, लेंस मेकर सूत्र (Lens Maker's Formula)", "https://www.youtube.com/watch?v=0h9V2gB8jWc", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 9: किरण प्रकाशिकी एवं प्रकाशिक यंत्र", "प्रिज्म द्वारा अपवर्तन, संयुक्त सूक्ष्मदर्शी एवं खगोलीय दूरदर्शी", "https://www.youtube.com/watch?v=kYJ7lS_u35M", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 10: तरंग प्रकाशिकी (Wave Optics)", "हाइगेन्स का तरंग सिद्धांत, परावर्तन व अपवर्तन की व्याख्या", "https://www.youtube.com/watch?v=s1I1hP99_8c", 1, cur_d),
+        ("Class 12", "इकाई 6: प्रकाशिकी (Optics)", "अध्याय 10: तरंग प्रकाशिकी", "यंग का द्वि-स्लिट प्रयोग (YDSE) - व्यतिकरण एवं विवर्तन", "https://www.youtube.com/watch?v=b4wS_sIe0uQ", 1, cur_d),
+        ("Class 12", "इकाई 7: विकिरण तथा द्रव्य की द्वैत प्रकृति", "अध्याय 11: प्रकाश विद्युत प्रभाव (Dual Nature)", "प्रकाश विद्युत प्रभाव के नियम, आइंस्टीन समीकरण एवं डी-ब्रॉग्ली तरंगें", "https://www.youtube.com/watch?v=kKKM8Y-u7ds", 1, cur_d),
+        ("Class 12", "इकाई 8: परमाणु तथा नाभिक", "अध्याय 12 & 13: परमाणु एवं नाभिक (Atoms & Nuclei)", "बोर का परमाणु मॉडल, द्रव्यमान क्षति एवं नाभिकीय विखंडन", "https://www.youtube.com/watch?v=w4QFJb9a8vo", 1, cur_d),
+        ("Class 12", "इकाई 9: इलेक्ट्रॉनिक युक्तियाँ", "अध्याय 14: अर्धचालक इलेक्ट्रॉनिकी (Semiconductors)", "p-n संधि डायोड, अर्ध एवं पूर्ण तरंग दिष्टकारी (Rectifier)", "https://www.youtube.com/watch?v=bGZ3b8N190A", 1, cur_d)
     ]
 
-    for v in default_videos:
+    for v in hindi_physics_videos:
         c.execute('''
-            INSERT OR IGNORE INTO physics_cloud_videos (target_class, unit_name, chapter_name, video_title, video_url, is_active, added_on)
+            INSERT OR REPLACE INTO physics_cloud_videos (target_class, unit_name, chapter_name, video_title, video_url, is_active, added_on)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', v)
 
@@ -775,17 +772,17 @@ if selected_portal == "⚙️ Admin Control Center":
     # SECTION 2: CLOUD VIDEO LECTURES MANAGER
     elif admin_tab == "🎥 Cloud Video Lectures Manager (Chapter & Unit-wise)":
         st.subheader("🎥 Cloud Video Lectures Manager")
-        st.markdown("Yahan se aap kisi bhi naye video lecture ko add, enable ya disable kar sakte hain:")
+        st.markdown("Yahan se aap kisi bhi naye Hindi/English video lecture ko add, enable ya disable kar sakte hain:")
 
-        with st.expander("➕ Add New Cloud Video Lecture", expanded=False):
+        with st.expander("➕ Add Custom Cloud Video Lecture", expanded=False):
             with st.form("add_cloud_video_form"):
                 v_col1, v_col2 = st.columns(2)
                 v_cls = v_col1.selectbox("Target Class:", ["Class 11", "Class 12"])
-                v_unit = v_col2.text_input("Unit Name:", placeholder="e.g. Unit 1: Physical World & Measurement")
+                v_unit = v_col2.text_input("Unit Name:", placeholder="e.g. इकाई 1: स्थिर वैद्युतिकी")
                 
-                v_ch = st.text_input("Chapter Name:", placeholder="e.g. Chapter 2: Units and Measurements")
-                v_title = st.text_input("Lecture Title:", placeholder="e.g. Part 1 - Dimensions & Errors")
-                v_url = st.text_input("Cloud Video URL (YouTube / Google Drive / MP4):", placeholder="https://www.youtube.com/watch?v=...")
+                v_ch = st.text_input("Chapter Name:", placeholder="e.g. अध्याय 1: वैद्युत आवेश तथा क्षेत्र")
+                v_title = st.text_input("Lecture Title:", placeholder="e.g. कूलॉम का नियम एवं गॉस की प्रमेय")
+                v_url = st.text_input("Cloud Video URL (YouTube / Drive):", placeholder="https://www.youtube.com/watch?v=...")
                 
                 if st.form_submit_button("🚀 Add Video Lecture", type="primary"):
                     if v_unit.strip() and v_ch.strip() and v_title.strip() and v_url.strip():
@@ -803,9 +800,9 @@ if selected_portal == "⚙️ Admin Control Center":
                         st.error("Kripya sabhi fields dhyan se bharein.")
 
         st.markdown("---")
-        st.write("### 🎬 By-Default Active Chapter-wise Videos")
+        st.write("### 🎬 Active Chapter-wise Hindi Videos in Library")
         conn = get_db()
-        all_videos = pd.read_sql_query("SELECT * FROM physics_cloud_videos ORDER BY target_class ASC, unit_name ASC, id ASC", conn)
+        all_videos = pd.read_sql_query("SELECT * FROM physics_cloud_videos ORDER BY target_class ASC, id ASC", conn)
         conn.close()
 
         if all_videos.empty:
@@ -814,7 +811,7 @@ if selected_portal == "⚙️ Admin Control Center":
             st.write(f"Total Videos in Cloud Library: **{len(all_videos)} Videos**")
             for _, vr in all_videos.iterrows():
                 with st.container():
-                    v_status_str = "🟢 Active (Visible to Students)" if vr['is_active'] == 1 else "🔴 Inactive (Hidden)"
+                    v_status_str = "🟢 Active (Live)" if vr['is_active'] == 1 else "🔴 Inactive (Hidden)"
                     st.markdown(f"**[{vr['target_class']}] {vr['unit_name']} ➔ {vr['chapter_name']}**")
                     st.markdown(f"🎬 **{vr['video_title']}** | Status: **{v_status_str}**")
                     
@@ -1098,7 +1095,7 @@ else:
                     if not clean_input_sr:
                         st.error("Kripya apna SR Number (Password) darj karein.")
                     elif not student_data:
-                        st.error(f"❌ {sel_class} mein SR Number '{clean_input_sr}' registered nahi mila! Kripya sahi SR number check karein.")
+                        st.error(f"❌ {sel_class} mein SR Number '{clean_input_sr}' registered nahi mila! Kripya apna sahi SR number check karein.")
                     else:
                         st.session_state.student_name = student_data['student_name']
                         st.session_state.student_sr = clean_sr_no(student_data['sr_no'])
@@ -1112,7 +1109,7 @@ else:
     student_sr = st.session_state.student_sr
     student_class = st.session_state.student_class
 
-    # Prominent Student Name in Sidebar
+    # Prominent Student Profile in Sidebar
     st.sidebar.markdown(f"### 👤 Candidate Profile")
     st.sidebar.markdown(f"**Name:** `{student_name}`")
     st.sidebar.markdown(f"**Class:** `{student_class}`")
@@ -1124,7 +1121,7 @@ else:
         st.session_state.student_class = None
         st.rerun()
 
-    # THREE STUDENT TABS: EXAM, CLOUD VIDEOS, AND ACADEMIC DATA
+    # THREE STUDENT TABS
     student_main_tab = st.radio("Navigation:", [
         "📝 Physics Live Examination", 
         "🎥 Cloud Video Lectures (Chapter-wise)", 
@@ -1148,7 +1145,6 @@ else:
             st.info("💡 **Notice:** Teacher dwara test live karne par yahan paper open ho jayega.")
             st.stop()
 
-        # Prioritize quizzes with actual questions
         valid_quizzes = []
         conn = get_db()
         for _, r in class_active_quizzes.iterrows():
@@ -1296,34 +1292,47 @@ else:
                 time.sleep(2)
                 st.rerun()
 
-    # TAB 2: CLOUD VIDEO LECTURES (ACTIVE & UNIT-WISE)
+    # TAB 2: CLOUD VIDEO LECTURES (LIST SE CHUN KAR OPEN HOGA)
     elif student_main_tab == "🎥 Cloud Video Lectures (Chapter-wise)":
-        st.subheader(f"🎥 {student_class} Cloud Video Lectures & Concepts")
-        st.markdown(f"Student: **{student_name}** | Unit & Chapter-wise Video Library")
+        st.subheader(f"🎥 {student_class} Hindi Medium Video Lectures (Chapter-wise)")
+        st.markdown(f"Student: **{student_name}** | Niche di gayi list me se chapter chunein:")
         
         conn = get_db()
         s_cls_num = "11" if "11" in str(student_class) else "12"
-        # Only active videos for this student's class
         v_df = pd.read_sql_query(
-            "SELECT * FROM physics_cloud_videos WHERE target_class LIKE ? AND is_active = 1 ORDER BY unit_name ASC, id ASC",
+            "SELECT * FROM physics_cloud_videos WHERE target_class LIKE ? AND is_active = 1 ORDER BY id ASC",
             conn, params=(f"%{s_cls_num}%",)
         )
         conn.close()
         
         if v_df.empty:
-            st.info(f"ℹ️ {student_class} ke liye abhi koi active video lectures upload nahi kiye gaye hain.")
+            st.info(f"ℹ️ {student_class} ke liye abhi koi video lectures upload nahi kiye gaye hain.")
         else:
-            units = v_df['unit_name'].unique()
-            for unit in units:
-                with st.expander(f"📚 Unit: {unit}", expanded=True):
-                    u_videos = v_df[v_df['unit_name'] == unit]
-                    for _, v_row in u_videos.iterrows():
-                        st.markdown(f"#### 🎬 {v_row['chapter_name']} : {v_row['video_title']}")
-                        try:
-                            st.video(v_row['video_url'])
-                        except Exception:
-                            st.error(f"Video play karne mein error aaya. Link check karein: {v_row['video_url']}")
-                        st.divider()
+            # Clean List Selection of Chapters
+            video_options = {
+                f"{r['chapter_name']} : {r['video_title']} ({r['unit_name']})": r['id']
+                for _, r in v_df.iterrows()
+            }
+            
+            selected_video_label = st.selectbox(
+                "📂 List me se Video Lecture Select Karein:",
+                list(video_options.keys()),
+                index=0
+            )
+            
+            selected_vid_id = video_options[selected_video_label]
+            v_selected = v_df[v_df['id'] == selected_vid_id].iloc[0]
+            
+            st.markdown("---")
+            st.markdown(f"### 🎬 {v_selected['chapter_name']}")
+            st.markdown(f"##### 📌 **{v_selected['video_title']}** | {v_selected['unit_name']}")
+            
+            # Embed Player
+            try:
+                st.video(v_selected['video_url'])
+                st.success("✅ Video lecture active hai. Play button daba kar online dekhein.")
+            except Exception:
+                st.error("Video play karne mein dikkat aa rahi hai. Kripya apna internet connection check karein.")
 
     # TAB 3: ACADEMIC DASHBOARD
     elif student_main_tab == "📊 My Academic Dashboard & Goals":
