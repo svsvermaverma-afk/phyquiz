@@ -302,7 +302,7 @@ def init_db():
         )
     ''')
 
-    # Load students.xlsx (Automatic sync if file exists in folder)
+    # Load students.xlsx (Automatic load with correct names)
     for s_file in ["students.xlsx", "students.csv"]:
         if os.path.exists(s_file):
             try:
@@ -615,7 +615,7 @@ if selected_portal == "⚙️ Admin Control Center":
 
     st.divider()
 
-    # SECTION 1: QUIZZES (TOGGLE & START NOW FULLY WORKING)
+    # SECTION 1: QUIZZES
     if admin_tab == "📚 Create & Manage Quizzes (Class & Topic Controls)":
         st.subheader("Quizzes & Instant Activation")
         with st.expander("➕ Create New Quiz", expanded=False):
@@ -920,7 +920,7 @@ if selected_portal == "⚙️ Admin Control Center":
                     st.download_button("📥 Download Results (CSV)", data=csv_data, file_name=f"results_{sel_q_id}.csv", mime="text/csv")
 
 # ==========================================
-# 5. STUDENT PORTAL (CLASS-LOCKED LOGIN)
+# 5. STUDENT PORTAL (CLASS & SR NO LOGIN WITH NAME DISPLAY)
 # ==========================================
 else:
     if "student_name" not in st.session_state:
@@ -939,7 +939,7 @@ else:
         with col1:
             with st.form("student_login_form"):
                 sel_class = st.selectbox("Select Your Class:", ["Class 11", "Class 12"])
-                in_sr = st.text_input("Password (Your SR Number):", type="password", placeholder="e.g. 38900")
+                in_sr = st.text_input("Password (Your SR Number):", type="password", placeholder="e.g. 40126")
                 submit_login = st.form_submit_button("Sign In to Portal", type="primary")
                 
                 if submit_login:
@@ -950,17 +950,24 @@ else:
                         "SELECT * FROM master_students WHERE sr_no = ? AND target_class = ?", 
                         (clean_input_sr, sel_class)
                     ).fetchone()
+                    
+                    # If not found directly, check across all students
+                    if not student_data:
+                        student_data = conn.execute(
+                            "SELECT * FROM master_students WHERE sr_no = ?", 
+                            (clean_input_sr,)
+                        ).fetchone()
                     conn.close()
                     
                     if not clean_input_sr:
                         st.error("Kripya apna SR Number (Password) darj karein.")
                     elif not student_data:
-                        st.error(f"❌ {sel_class} mein SR Number '{clean_input_sr}' registered nahi mila! Kripya sahi class aur SR number check karein.")
+                        st.error(f"❌ {sel_class} mein SR Number '{clean_input_sr}' registered nahi mila! Kripya sahi SR number check karein.")
                     else:
                         st.session_state.student_name = student_data['student_name']
                         st.session_state.student_sr = clean_sr_no(student_data['sr_no'])
                         st.session_state.student_class = student_data['target_class']
-                        st.success("Login successful!")
+                        st.success(f"Welcome, **{student_data['student_name']}**! Login successful!")
                         time.sleep(0.5)
                         st.rerun()
         st.stop()
@@ -969,14 +976,16 @@ else:
     student_sr = st.session_state.student_sr
     student_class = st.session_state.student_class
 
-    st.sidebar.markdown(f"**🏷️ Class:** `{student_class}`")
-    st.sidebar.markdown(f"**🔑 SR No:** `{student_sr}`")
+    # Prominent Student Name in Sidebar
+    st.sidebar.markdown(f"### 👤 Candidate Profile")
+    st.sidebar.markdown(f"**Name:** `{student_name}`")
+    st.sidebar.markdown(f"**Class:** `{student_class}`")
+    st.sidebar.markdown(f"**SR No:** `{student_sr}`")
     
     if st.sidebar.button("Log Out"):
         st.session_state.student_name = None
         st.session_state.student_sr = None
         st.session_state.student_class = None
-        st.session_state.selected_quiz_id = None
         st.rerun()
 
     student_main_tab = st.radio("Navigation:", ["📝 Physics Live Examination", "📊 My Academic Dashboard & Goals"], horizontal=True)
@@ -984,7 +993,8 @@ else:
 
     # TAB 1: ACADEMIC DASHBOARD
     if student_main_tab == "📊 My Academic Dashboard & Goals":
-        st.title(f"📊 Academic Progress & Profile — {student_class}")
+        st.title(f"📊 Academic Progress & Profile: {student_name}")
+        st.markdown(f"##### Class: **{student_class}** | SR No: **{student_sr}**")
         
         conn = get_db()
         prof = conn.execute("SELECT * FROM student_profiles WHERE sr_no = ?", (student_sr,)).fetchone()
@@ -1009,7 +1019,7 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.info(f"ℹ️ {student_class} ke liye career goals record abhi upload nahi huye hain.")
+                st.info(f"ℹ️ {student_name} ke liye career goals record abhi upload nahi huye hain.")
 
         with tab_m:
             st.subheader("📈 Monthly Test Marks")
@@ -1042,6 +1052,7 @@ else:
             if prof:
                 c1, c2 = st.columns(2)
                 with c1:
+                    st.markdown(f"**Student Full Name:** `{prof['student_name']}`")
                     st.markdown(f"**Roll Number:** `{prof['roll_no']}`")
                     st.markdown(f"**Class & Section:** `{prof['class_sec']}`")
                     st.markdown(f"**Scholar Register (SR) No:** `{prof['sr_no']}`")
@@ -1054,12 +1065,12 @@ else:
             else:
                 st.info(f"ℹ️ {student_class} ke liye profile information abhi upload nahi huyi hai.")
 
-    # TAB 2: LIVE EXAMINATION (INTELLIGENT QUIZ SELECTION)
+    # TAB 2: LIVE EXAMINATION (PRIORITIZES LIVE QUIZ WITH QUESTIONS)
     elif student_main_tab == "📝 Physics Live Examination":
         quizzes_df = get_all_quizzes()
         s_cls_num = "11" if "11" in str(student_class) else "12"
 
-        # 1. Jo quiz ACTIVE ho aur uski class student ki class se match ho
+        # Active quizzes matching class
         class_active_quizzes = quizzes_df[
             (quizzes_df['is_active'] == 1) & 
             (quizzes_df['target_class'].astype(str).str.contains(s_cls_num, case=False, na=False))
@@ -1070,7 +1081,7 @@ else:
             st.info("💡 **Notice:** Teacher dwara test live karne par yahan paper open ho jayega.")
             st.stop()
 
-        # 2. Check which active quiz actually has questions
+        # Find quizzes with questions first
         valid_quizzes = []
         conn = get_db()
         for _, r in class_active_quizzes.iterrows():
@@ -1079,7 +1090,6 @@ else:
                 valid_quizzes.append((r, q_cnt))
         conn.close()
 
-        # If valid quizzes with questions exist, prioritize them!
         if valid_quizzes:
             if len(valid_quizzes) == 1:
                 selected_quiz_row = valid_quizzes[0][0]
@@ -1089,7 +1099,6 @@ else:
                 sel_id = q_opts[sel_label]
                 selected_quiz_row = next(r for r, _ in valid_quizzes if r['id'] == sel_id)
         else:
-            # Fallback if no questions added yet in any quiz
             selected_quiz_row = class_active_quizzes.iloc[-1]
 
         quiz_id = int(selected_quiz_row['id'])
@@ -1098,14 +1107,14 @@ else:
         quiz_dur_val = int(selected_quiz_row['duration_minutes'])
 
         st.markdown(f"### 📝 {quiz_title_val}")
-        st.markdown(f"##### 📖 Topic: **{quiz_topic_val}** | Class: **{student_class}**")
+        st.markdown(f"##### 👤 Candidate: **{student_name}** | Class: **{student_class}** | Topic: **{quiz_topic_val}**")
 
         conn = get_db()
         sub_check = conn.execute("SELECT * FROM submissions WHERE quiz_id = ? AND LOWER(student_name) = ?", (quiz_id, student_name.lower())).fetchone()
         conn.close()
 
         if sub_check:
-            st.success(f"✅ Your exam for **'{quiz_title_val}'** has been successfully submitted!")
+            st.success(f"✅ **{student_name}**, your exam for **'{quiz_title_val}'** has been successfully submitted!")
             c_m1, c_m2, c_m3 = st.columns(3)
             c_m1.metric("Final Score", f"{sub_check['score']} / {sub_check['total_questions']}")
             pct = (sub_check['score'] / sub_check['total_questions'] * 100) if sub_check['total_questions'] > 0 else 0
@@ -1147,7 +1156,7 @@ else:
 
         if not attempt_row:
             st.markdown(f"""
-            - **Candidate SR No:** `{student_sr}`
+            - **Candidate Name:** `{student_name}` (SR: `{student_sr}`)
             - **Exam Duration:** `{quiz_dur_val} Minutes`
             - **Total Questions:** `{len(questions_df)}`
             - **Anti-Cheating Rules:**
